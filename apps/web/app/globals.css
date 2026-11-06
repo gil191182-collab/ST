@@ -1,0 +1,19 @@
+@import 'tailwindcss';
+
+/* Los colores NUNCA van fijos en componentes: vienen del tema del despacho
+   (variables --color-* que el layout inyecta desde /api/tema). */
+@theme inline {
+  --color-marca-fondo: var(--color-fondo);
+  --color-marca-texto-fondo: var(--color-texto-fondo);
+  --color-marca-acento: var(--color-acento);
+  --color-marca-acento-texto: var(--color-acento-texto);
+  --color-marca-accion: var(--color-accion);
+  --color-marca-texto-accion: var(--color-texto-accion);
+  --font-marca: var(--fuente), system-ui, sans-serif;
+}
+
+body { font-family: var(--fuente), system-ui, sans-serif; }
+
+.boton-accion { background: var(--color-accion); color: var(--color-texto-accion); }
+.boton-accion:hover { filter: brightness(0.92); }
+.boton-accion:focus-visible, .boton-sec:focus-visible { outline: 2px solid var(--color-acento); outline-offset: 2px; }

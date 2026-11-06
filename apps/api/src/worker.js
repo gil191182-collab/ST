@@ -21,8 +21,9 @@ export async function prepararRecordatorios(client, { hoy = hoyMexico() } = {}) 
     const delCliente = (pend[e.id] ?? []).filter(r => ['cliente', 'ambos'].includes(r.responsable) && ['pendiente', 'observacion', 'por_confirmar'].includes(r.estado));
     if (!delCliente.length) continue;
     const { rows: [ya] } = await client.query(
-      `SELECT 1 FROM acciones WHERE expediente_id = $1 AND tipo = 'recordatorio' AND propuesta_por = 'sistema'
-         AND (creado_en AT TIME ZONE 'America/Mexico_City')::date = $2::date AND archivado_en IS NULL`, [e.id, hoy]);
+      `SELECT 1 FROM acciones WHERE expediente_id = $1 AND archivado_en IS NULL AND (
+         (tipo = 'recordatorio' AND propuesta_por = 'sistema' AND (creado_en AT TIME ZONE 'America/Mexico_City')::date = $2::date)
+         OR (tipo IN ('recordatorio','whatsapp') AND estado = 'propuesta'))`, [e.id, hoy]);
     if (ya) continue;
     const lista = delCliente.slice(0, 5).map(r => `• ${r.nombre}${r.nota ? ` (${r.nota})` : ''}`).join('\n');
     const plazo = e.plazo ? `\nFecha límite: ${fechaLarga(e.plazo.fecha)} (faltan ${e.plazo.dias} días).` : '';

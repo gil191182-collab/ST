@@ -1,0 +1,32 @@
+# Pruebas y reglas de dominio en verde, o no se avanza (CLAUDE.md §6).
+name: Pruebas
+on:
+  push:
+  pull_request:
+
+jobs:
+  pruebas:
+    runs-on: ubuntu-24.04
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: postgres
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd pg_isready --health-interval 5s --health-retries 10
+    env:
+      TEST_DATABASE_ADMIN_URL: postgresql://postgres:postgres@localhost:5432/postgres
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: npm }
+      - run: npm ci
+      - name: Reglas de dominio (plazos, textos, marca)
+        run: npm run test:dominio
+      - name: Reglas en la base de datos y API
+        run: npm run test:db
+      - name: Compilar panel web
+        run: npm run build -w apps/web
+      - name: Revisar scripts del servidor
+        run: bash -n infra/scripts/*.sh
