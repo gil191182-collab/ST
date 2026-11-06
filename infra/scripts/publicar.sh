@@ -22,23 +22,42 @@ if [[ "${1:-}" == "--regresar" ]]; then
 fi
 
 VERSION=${1:?Indique la versión (rama o etiqueta de git)}
-echo "1/5 Respaldo previo de la base…"
-bash infra/scripts/respaldo.sh
+ENTORNO=${PUBLICAR_ENTORNO:-produccion}   # en el servidor de staging: PUBLICAR_ENTORNO=staging en .env
 
-echo "2/5 Descargando $VERSION…"
+echo "Descargando $VERSION…"
 git fetch --tags origin
 git checkout --quiet "$VERSION"
 ETIQUETA=$(git rev-parse --short HEAD)
+
+if [[ "$ENTORNO" == "produccion" ]]; then
+  # Regla de CLAUDE.md §6: producción solo con el clic de aprobación de Gil en el chat.
+  APROBACION=$(docker compose exec -T postgres psql -U logistics_admin -d logistics -At \
+    -c "SELECT aprobada_por || ' el ' || to_char(aprobada_en, 'YYYY-MM-DD HH24:MI') FROM publicacion_aprobada('$ETIQUETA')")
+  if [[ -z "$APROBACION" ]]; then
+    echo "✘ La versión $ETIQUETA no tiene aprobación del director para producción."
+    echo "  Solicítela en el chat de consultores (versión: $ETIQUETA) y vuelva a correr este script."
+    exit 1
+  fi
+  echo "✔ Aprobada por $APROBACION"
+fi
+
+echo "1/5 Respaldo previo de la base…"
+bash infra/scripts/respaldo.sh
+echo "2/5 Versión $ETIQUETA lista."
 
 echo "3/5 Construyendo imágenes $ETIQUETA…"
 VERSION=$ETIQUETA docker compose build
 
 echo "4/5 Aplicando migraciones…"
-VERSION=$ETIQUETA docker compose run --rm migrar
+VERSION=$ETIQUETA docker compose --profile herramientas run --rm migrar
 
 echo "5/5 Arrancando…"
 VERSION=$ETIQUETA docker compose up -d api worker web
 echo "$ETIQUETA" >> "$ARCHIVO_VERSIONES"
+if [[ "$ENTORNO" == "produccion" ]]; then
+  docker compose exec -T postgres psql -U logistics_admin -d logistics -qc \
+    "UPDATE publicaciones SET estado = 'publicada', publicada_en = now() WHERE id = (SELECT id FROM publicacion_aprobada('$ETIQUETA'))"
+fi
 
 sleep 5
 docker compose ps

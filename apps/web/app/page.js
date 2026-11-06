@@ -3,7 +3,7 @@
 import { useEffect, useState, useCallback } from 'react';
 import Link from 'next/link';
 import { api, ESTADOS_EXPEDIENTE, COLOR_URGENCIA, ETIQUETA_URGENCIA, fechaHora } from '../lib/api';
-import { Encabezado, Etiqueta, Tarjeta, Barra, Aviso, Cargando } from './componentes';
+import { EncabezadoConsultor, Etiqueta, Tarjeta, Barra, Aviso, Cargando } from './componentes';
 import { ChatMarce } from './chat-marce';
 
 const TIPO_ACCION = { recordatorio: 'Recordatorio', correo: 'Correo', whatsapp: 'WhatsApp', alerta_interna: 'Alerta interna',
@@ -32,7 +32,7 @@ export default function Tablero() {
 
   return (
     <>
-      <Encabezado despacho={yo?.despacho} subtitulo="Consultores" usuario={yo?.usuario?.nombre} />
+      <EncabezadoConsultor yo={yo} />
       <main className="mx-auto max-w-7xl space-y-5 px-4 py-6">
         <p className="text-sm text-slate-500 first-letter:uppercase">{hoy}</p>
 

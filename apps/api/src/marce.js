@@ -69,11 +69,64 @@ function respuestaSinIA(expedientes) {
   };
 }
 
+const INSTRUCCIONES_REVISION = `Eres Marce, asistente de un despacho que integra expedientes ferroviarios ante la ATTRAPI (Agencia de Trenes y Transporte Público Integrado, México).
+
+Pre-revisas un documento contra el requisito que debe cumplir. Tu trabajo es señalar lo que un consultor debe mirar: datos faltantes, inconsistencias con el permiso (número, razón social, domicilio, servicio), fechas vencidas o incoherentes, firmas o anexos que el documento menciona pero no trae, y cualquier mención a la antigua Agencia Reguladora del Transporte Ferroviario (no debe aparecer).
+
+Reglas:
+- No apruebas nada. Solo propones observaciones; un consultor decide.
+- Solo con base en el texto recibido. Si el texto está incompleto o ilegible, dilo.
+- El domicilio debe ser idéntico al del permiso, en el mismo orden; cualquier diferencia es una observación.
+- Cada observación es concreta y dice dónde está el problema.
+- Nivel: FALLA (impide ingresar), FALTA (falta algo), REVISAR (dudoso), OK (verificado).`;
+
+const ESQUEMA_REVISION = {
+  type: 'object', additionalProperties: false, required: ['resumen', 'observaciones'],
+  properties: {
+    resumen: { type: 'string' },
+    observaciones: { type: 'array', items: {
+      type: 'object', additionalProperties: false, required: ['nivel', 'mensaje'],
+      properties: { nivel: { type: 'string', enum: ['OK', 'REVISAR', 'FALTA', 'FALLA'] }, mensaje: { type: 'string' } },
+    } },
+  },
+};
+
 export function crearMarce({ modelo, activo, cliente } = {}) {
   const anthropic = activo ? (cliente ?? new Anthropic()) : null;
 
+  async function pedirJson({ system, contenido, esquema, effort = 'medium' }) {
+    const r = await anthropic.beta.messages.create({
+      model: modelo,
+      max_tokens: 16000,
+      betas: ['server-side-fallback-2026-07-01'],
+      fallbacks: 'default',
+      output_config: { effort, format: { type: 'json_schema', schema: esquema } },
+      system,
+      messages: [{ role: 'user', content: contenido }],
+    });
+    if (r.stop_reason === 'refusal' || r.stop_reason === 'max_tokens') return { error: r.stop_reason, modelo: r.model };
+    const texto = r.content.filter(b => b.type === 'text').map(b => b.text).join('');
+    try { return { datos: JSON.parse(texto), modelo: r.model }; } catch { return { error: 'formato', modelo: r.model }; }
+  }
+
   return {
     activo: Boolean(anthropic),
+
+    /** Pre-revisión de un documento. Devuelve observaciones propuestas, nunca un "aprobado". */
+    async revisarDocumento({ texto, requisito, tramite, permiso, cliente: nombreCliente }) {
+      if (!anthropic) return { resumen: 'Marce aún no está conectada a la IA; solo se corrieron las reglas fijas.', observaciones: [], modelo: null };
+      if (!texto) return { resumen: 'No se pudo leer texto del documento (¿es un escaneo?). Revíselo a mano.', observaciones: [{ nivel: 'REVISAR', mensaje: 'Documento sin texto legible.' }], modelo: null };
+      const contenido = [
+        `Trámite: ${tramite}`,
+        `Requisito que debe cumplir: ${requisito ?? 'sin requisito asignado'}`,
+        `Cliente: ${nombreCliente}`,
+        permiso ? `Permiso: ${permiso.numero} · ${permiso.servicio}\nDomicilio textual del permiso: ${permiso.domicilio_textual}` : 'Permiso: no registrado',
+        '', 'Texto del documento:', '<documento>', texto.slice(0, 150_000), '</documento>',
+      ].join('\n');
+      const r = await pedirJson({ system: INSTRUCCIONES_REVISION, contenido, esquema: ESQUEMA_REVISION });
+      if (r.error) return { resumen: 'Marce no pudo revisar este documento. Revíselo a mano.', observaciones: [], modelo: r.modelo };
+      return { resumen: String(r.datos.resumen ?? ''), observaciones: r.datos.observaciones ?? [], modelo: r.modelo };
+    },
 
     async preguntar({ pregunta, expedientes, quienPregunta }) {
       if (!anthropic) return respuestaSinIA(expedientes);

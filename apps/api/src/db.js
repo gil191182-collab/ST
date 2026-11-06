@@ -53,7 +53,7 @@ export function traducirError(e) {
   const m = /^([A-Z_]+): (.*)$/s.exec(e?.message ?? '');
   if (e?.code === 'P0001' && m) {
     const estatus = { NUNCA_SE_BORRA: 409, CADENA_INCOMPLETA: 409, VERSION_CONGELADA: 409,
-      SOLO_PERSONAS: 403, SOLO_CONSULTORES: 403, APROBADOR_DISTINTO: 403, BITACORA_INMUTABLE: 409 }[m[1]] ?? 400;
+      SOLO_PERSONAS: 403, SOLO_CONSULTORES: 403, SOLO_DIRECTOR: 403, APROBADOR_DISTINTO: 403, BITACORA_INMUTABLE: 409 }[m[1]] ?? 400;
     return { estatus, codigo: m[1], mensaje: m[2] };
   }
   if (e?.code === '23514') return { estatus: 400, codigo: 'REGLA', mensaje: `No se cumple una regla del sistema (${e.constraint}).` };

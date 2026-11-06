@@ -4,11 +4,12 @@
 import { use, useEffect, useState, useCallback } from 'react';
 import Link from 'next/link';
 import { api, ESTADOS_EXPEDIENTE, ESTADOS_REQUISITO, RESPONSABLE, COLOR_ESTADO, COLOR_URGENCIA, fechaHora, fechaCorta } from '../../../lib/api';
-import { Encabezado, Etiqueta, Tarjeta, Barra, Aviso, Cargando } from '../../componentes';
+import { EncabezadoConsultor, Etiqueta, Tarjeta, Barra, Aviso, Cargando } from '../../componentes';
+import { Escritos, Ajustes } from '../../partes-gestion';
 import { ChatMarce } from '../../chat-marce';
 import { Documentos, Mensajes } from '../../partes-expediente';
 
-const PESTANAS = ['Checklist', 'Documentos', 'Mensajes', 'Plazos', 'Bitácora'];
+const PESTANAS = ['Checklist', 'Documentos', 'Escritos', 'Mensajes', 'Plazos', 'Ajustes', 'Bitácora'];
 const COLOR_RESULTADO = { OK: 'text-emerald-700', REVISAR: 'text-amber-800', FALTA: 'text-red-700', FALLA: 'text-red-700' };
 
 export default function Expediente({ params }) {
@@ -31,7 +32,7 @@ export default function Expediente({ params }) {
 
   return (
     <>
-      <Encabezado despacho={yo?.despacho} subtitulo="Consultores" usuario={yo?.usuario?.nombre} enlaces={[{ href: '/', texto: 'Seguimiento' }]} />
+      <EncabezadoConsultor yo={yo} />
       <main className="mx-auto max-w-7xl space-y-5 px-4 py-6">
         <nav className="text-sm text-slate-500"><Link href="/" className="hover:underline">Seguimiento</Link> / {e.cliente} · {e.terminal}</nav>
         <div className="flex flex-wrap items-start justify-between gap-4">
@@ -72,7 +73,9 @@ export default function Expediente({ params }) {
                 </ul>
               </Tarjeta>
             ))}
-            {pestana === 'Documentos' && <Documentos e={e} alCambiar={cargar} />}
+            {pestana === 'Documentos' && <Documentos e={e} alCambiar={cargar} consultor />}
+            {pestana === 'Escritos' && <Escritos e={e} alCambiar={() => { cargar(); setPestana('Documentos'); }} />}
+            {pestana === 'Ajustes' && <Ajustes e={e} alCambiar={cargar} />}
             {pestana === 'Mensajes' && <Mensajes e={e} alCambiar={cargar} />}
             {pestana === 'Plazos' && (
               <Tarjeta titulo="Plazos calculados">

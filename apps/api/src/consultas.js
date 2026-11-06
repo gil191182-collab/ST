@@ -8,7 +8,7 @@ SELECT e.id, e.estado, e.alcance, e.siguiente_paso, e.piloto_automatico, e.abier
        concat_ws(', ', t.municipio, t.estado) AS ubicacion,
        tr.clave AS tramite_clave, tr.nombre AS tramite, v.homoclave_actual AS homoclave,
        p.id AS permiso_id, p.numero AS permiso, p.servicio, p.fecha_otorgamiento,
-       ct.nombre AS contacto, u.nombre AS consultor,
+       ct.nombre AS contacto, u.nombre AS consultor, e.contacto_id, e.consultor_id, e.terminal_id, e.resultado,
        (SELECT count(*) FROM expediente_requisitos r WHERE r.expediente_id = e.id AND r.archivado_en IS NULL)::int AS total,
        (SELECT count(*) FROM expediente_requisitos r WHERE r.expediente_id = e.id AND r.estado = 'aprobado' AND r.archivado_en IS NULL)::int AS aprobados,
        (SELECT count(*) FROM expediente_requisitos r WHERE r.expediente_id = e.id AND r.estado = 'observacion' AND r.archivado_en IS NULL)::int AS con_observacion,
@@ -108,7 +108,8 @@ export async function detalleExpediente(client, id, { hoy = hoyMexico() } = {}) 
     q(`SELECT id, seccion, nombre, responsable, estado, nota, propuesta_ia, aprobado_en,
               (SELECT nombre FROM usuarios u WHERE u.id = r.aprobado_por) AS aprobado_por_nombre
        FROM expediente_requisitos r WHERE expediente_id = $1 AND archivado_en IS NULL ORDER BY orden`),
-    q(`SELECT id, nombre, tipo_mime, tamano_bytes, requisito_id, version, creado_en, (ruta_cifrada IS NOT NULL) AS disponible
+    q(`SELECT id, nombre, tipo_mime, tamano_bytes, requisito_id, version, creado_en, (ruta_cifrada IS NOT NULL) AS disponible,
+              (texto_extraido IS NOT NULL) AS con_texto, revision, referencia_autorizada, origen, tipo_escrito
        FROM documentos WHERE expediente_id = $1 AND archivado_en IS NULL ORDER BY creado_en DESC`),
     q(`SELECT id, canal, direccion, autor_tipo, autor_nombre, texto, creado_en FROM mensajes
        WHERE expediente_id = $1 AND archivado_en IS NULL ORDER BY creado_en`),
@@ -142,7 +143,7 @@ export async function portalCliente(client, { clienteId, hoy = hoyMexico() }) {
       total: d.total, aprobados: d.aprobados, con_observacion: d.con_observacion, plazo: d.plazo,
       fecha_otorgamiento: d.fecha_otorgamiento && toISO(d.fecha_otorgamiento),
       requisitos: d.requisitos.map(({ propuesta_ia, ...r }) => r),
-      documentos: d.documentos,
+      documentos: d.documentos.map(({ revision, referencia_autorizada, ...x }) => x),
       mensajes: d.mensajes.filter(m => m.canal !== 'interno'),
       plazos: d.plazos,
       loQueNecesitamos: d.requisitos.filter(r => ['cliente', 'ambos'].includes(r.responsable) && !['aprobado', 'recibido', 'en_revision'].includes(r.estado)),

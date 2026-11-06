@@ -1,5 +1,6 @@
 'use client';
 import Link from 'next/link';
+import { useState, useEffect, useCallback } from 'react';
 import { api } from '../lib/api';
 
 export function Encabezado({ despacho, subtitulo, usuario, enlaces = [] }) {
@@ -66,4 +67,78 @@ export function Aviso({ tipo = 'error', children }) {
 
 export function Cargando() {
   return <p className="p-8 text-center text-slate-500">Cargando…</p>;
+}
+
+const MENU_CONSULTOR = [
+  { href: '/', texto: 'Seguimiento' },
+  { href: '/clientes', texto: 'Clientes y permisos' },
+  { href: '/chat', texto: 'Chat de consultores' },
+  { href: '/plantillas', texto: 'Plantillas' },
+  { href: '/personas', texto: 'Personas' },
+  { href: '/configuracion', texto: 'Configuración' },
+];
+
+export function EncabezadoConsultor({ yo }) {
+  return <Encabezado despacho={yo?.despacho} subtitulo="Consultores" usuario={yo?.usuario?.nombre} enlaces={MENU_CONSULTOR} />;
+}
+
+export function Campo({ etiqueta, ayuda, children, className = '' }) {
+  return (
+    <label className={`block text-sm ${className}`}>
+      <span className="mb-1 block font-medium text-slate-700">{etiqueta}</span>
+      {children}
+      {ayuda && <span className="mt-1 block text-xs text-slate-500">{ayuda}</span>}
+    </label>
+  );
+}
+
+export const estiloEntrada = 'w-full rounded-lg border border-slate-300 px-3 py-2 text-sm';
+
+/** Formulario simple: junta los campos con name y llama a alEnviar(datos). */
+export function Formulario({ alEnviar, textoBoton = 'Guardar', children, className = '' }) {
+  const [error, setError] = useState('');
+  const [ok, setOk] = useState('');
+  const [enviando, setEnviando] = useState(false);
+  async function enviar(ev) {
+    ev.preventDefault();
+    const form = ev.currentTarget;
+    const datos = {};
+    for (const el of form.elements) {
+      if (!el.name || el.disabled) continue;
+      if (el.type === 'checkbox') datos[el.name] = el.checked;
+      else if (el.type === 'number') { if (el.value !== '') datos[el.name] = Number(el.value); }
+      else if (el.value !== '') datos[el.name] = el.value;
+    }
+    setError(''); setOk(''); setEnviando(true);
+    try {
+      const r = await alEnviar(datos, form);
+      setOk(typeof r === 'string' ? r : 'Guardado.');
+      form.reset();
+    } catch (e) { setError(e.message); } finally { setEnviando(false); }
+  }
+  return (
+    <form onSubmit={enviar} className={`space-y-3 ${className}`}>
+      {children}
+      <Aviso>{error}</Aviso>
+      <Aviso tipo="ok">{ok}</Aviso>
+      <button disabled={enviando} className="boton-accion rounded-lg px-4 py-2 text-sm font-medium disabled:opacity-60">{enviando ? 'Guardando…' : textoBoton}</button>
+    </form>
+  );
+}
+
+/** Cargar /api/yo y una ruta de datos; redirige a clientes al portal. */
+export function usarDatos(ruta) {
+  const [yo, setYo] = useState(null);
+  const [datos, setDatos] = useState(null);
+  const [error, setError] = useState('');
+  const cargar = useCallback(async () => {
+    try {
+      const y = await api('/api/yo');
+      if (y.usuario.rol === 'cliente') { location.href = '/portal'; return; }
+      setYo(y);
+      if (ruta) setDatos(await api(ruta));
+    } catch (e) { setError(e.message); }
+  }, [ruta]);
+  useEffect(() => { cargar(); }, [cargar]);
+  return { yo, datos, error, cargar };
 }

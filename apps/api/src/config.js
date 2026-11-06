@@ -28,5 +28,7 @@ export function cargarConfig(env = process.env) {
     despachoPorDefecto: env.DESPACHO_POR_DEFECTO ?? 'strateggia',
     anthropicModelo: env.ANTHROPIC_MODELO ?? 'claude-opus-5-5',
     marceActivo: Boolean(env.ANTHROPIC_API_KEY),
+    // Ficha secreta que deben enviar WATI y el reenvío de correo a /api/entradas/*
+    entradasToken: env.ENTRADAS_TOKEN ?? null,
   };
 }

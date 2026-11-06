@@ -9,12 +9,20 @@ import { conDespacho, despachoPorSubdominio, traducirError } from './db.js';
 import { verificarClave, firmar, verificarFirma, guardarArchivo, leerArchivo } from './seguridad.js';
 import { tablero, detalleExpediente, portalCliente, listarExpedientes, pendientesDe } from './consultas.js';
 import { recalcularPlazos } from './plazos.js';
+import { extraerTexto } from './texto.js';
+import { rutasGestion } from './rutas/gestion.js';
+import { rutasUsuarios } from './rutas/usuarios.js';
+import { rutasDocumentos } from './rutas/documentos.js';
+import { rutasEscritos } from './rutas/escritos.js';
+import { rutasDespacho } from './rutas/despacho.js';
+import { rutasEntradas } from './rutas/entradas.js';
+import { rutasPublicaciones } from './rutas/publicaciones.js';
 
 const HORAS_SESION = 12;
 const MINUTOS_URL_ARCHIVO = 10;
 const ESTADOS_EDITABLES = ['pendiente', 'por_elaborar', 'en_integracion', 'parcial', 'recibido', 'revision_cliente', 'en_revision', 'observacion', 'por_confirmar'];
 
-class ErrorHttp extends Error {
+export class ErrorHttp extends Error {
   constructor(estatus, mensaje) { super(mensaje); this.estatus = estatus; }
 }
 
@@ -80,7 +88,7 @@ export function crearApp({ config, pool, marce, logger = false }) {
   // ---------- Tema del despacho (público: lo necesita la pantalla de acceso) ----------
   app.get('/api/tema', { config: { publica: true } }, async (req) => {
     const tema = construirTema(req.despacho.tema);
-    return { despacho: req.despacho.nombre, lema: req.despacho.lema, logo: req.despacho.tema.logo ?? null, tema, css: temaACss(tema) };
+    return { despacho: req.despacho.nombre, lema: req.despacho.lema, logo: req.despacho.tema.logo_ruta ? '/api/despacho/logo' : null, tema, css: temaACss(tema) };
   });
 
   // ---------- Sesión ----------
@@ -256,10 +264,11 @@ export function crearApp({ config, pool, marce, logger = false }) {
     return enDespacho(req, async (c) => {
       await exigirAccesoExpediente(c, req, req.params.id);
       const { ruta, sha256 } = await guardarArchivo({ carpeta: config.carpetaArchivos, despachoId: req.despacho.id, buffer, llave: config.llaveArchivos });
+      const texto = await extraerTexto(buffer, { nombre: archivo.filename, tipo: archivo.mimetype });
       const { rows: [d] } = await c.query(
-        `INSERT INTO documentos (despacho_id, expediente_id, requisito_id, nombre, tipo_mime, tamano_bytes, sha256, ruta_cifrada, subido_por)
-         VALUES (despacho_actual(), $1, $2, $3, $4, $5, $6, $7, usuario_actual()) RETURNING id, nombre`,
-        [req.params.id, requisitoId, archivo.filename, archivo.mimetype, buffer.length, sha256, ruta]);
+        `INSERT INTO documentos (despacho_id, expediente_id, requisito_id, nombre, tipo_mime, tamano_bytes, sha256, ruta_cifrada, subido_por, texto_extraido)
+         VALUES (despacho_actual(), $1, $2, $3, $4, $5, $6, $7, usuario_actual(), $8) RETURNING id, nombre, (texto_extraido IS NOT NULL) AS con_texto`,
+        [req.params.id, requisitoId, archivo.filename, archivo.mimetype, buffer.length, sha256, ruta, texto]);
       if (requisitoId && req.usuario.rol === 'cliente') {
         await c.query(`UPDATE expediente_requisitos SET estado = 'recibido' WHERE id = $1 AND expediente_id = $2 AND estado <> 'aprobado'`, [requisitoId, req.params.id]);
       }
@@ -409,6 +418,12 @@ export function crearApp({ config, pool, marce, logger = false }) {
     soloConsultor(req);
     return { cambios: await enDespacho(req, (c) => recalcularPlazos(c), 'sistema') };
   });
+
+  // ---------- Módulos ----------
+  const h = { config, pool, marce, ErrorHttp, enDespacho, soloConsultor, soloDirector, exigirAccesoExpediente, recalcularPlazos };
+  for (const registrar of [rutasGestion, rutasUsuarios, rutasDocumentos, rutasEscritos, rutasDespacho, rutasEntradas, rutasPublicaciones]) {
+    registrar(app, h);
+  }
 
   return app;
 }
