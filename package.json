@@ -1,0 +1,25 @@
+{
+  "name": "strateggia-logistics",
+  "private": true,
+  "description": "Plataforma de trámites ferroviarios ante la ATTRAPI para despachos de consultoría",
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "migrar": "node db/migrar.js",
+    "sembrar": "node db/migrar.js --semillas",
+    "test": "npm run test:dominio && npm run test:db",
+    "test:dominio": "node --test packages/dominio/test/*.test.js",
+    "test:db": "node --test --test-concurrency=1 apps/api/test/*.test.js",
+    "dev:api": "npm -w apps/api run dev",
+    "dev:web": "npm -w apps/web run dev"
+  },
+  "type": "module",
+  "dependencies": {
+    "pg": "^8.13.1"
+  }
+}
