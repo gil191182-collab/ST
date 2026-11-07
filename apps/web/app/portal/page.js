@@ -24,7 +24,7 @@ export default function Portal() {
   if (!lista) return error ? <Aviso>{error}</Aviso> : <Cargando />;
   return (
     <>
-      <Encabezado despacho={yo?.despacho} subtitulo="Portal de trámites ferroviarios" usuario={yo?.usuario?.nombre} />
+      <Encabezado despacho={yo?.despacho} subtitulo="Portal de trámites ferroviarios" usuario={yo?.usuario?.nombre} logo={yo?.logo} />
       <main className="mx-auto max-w-6xl space-y-8 px-4 py-6">
         {lista.map(t => <Tramite key={t.id} t={t} alCambiar={cargar} />)}
         {!lista.length && <p className="text-slate-500">No tiene trámites en curso.</p>}

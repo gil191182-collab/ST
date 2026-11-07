@@ -45,7 +45,7 @@ export function rutasPublicaciones(app, { ErrorHttp, enDespacho, soloConsultor, 
       await c.query(
         `INSERT INTO mensajes (despacho_id, canal, direccion, autor_tipo, autor_nombre, texto)
          VALUES (despacho_actual(), 'interno', 'interno', 'sistema', 'Sistema', $1)`,
-        [`${req.usuario.nombre} pide publicar la versión ${req.body.version} en ${req.body.entorno ?? 'produccion'}. Cambios: ${req.body.cambios}`]);
+        [`${req.usuario.nombre} pide publicar la versión ${req.body.version} en ${(req.body.entorno ?? 'produccion') === 'produccion' ? 'producción' : 'staging'}. Cambios: ${req.body.cambios}`]);
       return p;
     });
   });

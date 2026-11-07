@@ -112,7 +112,7 @@ export function crearApp({ config, pool, marce, logger = false }) {
     return { ok: true };
   });
 
-  app.get('/api/yo', async (req) => ({ usuario: req.usuario, despacho: req.despacho.nombre }));
+  app.get('/api/yo', async (req) => ({ usuario: req.usuario, despacho: req.despacho.nombre, logo: req.despacho.tema?.logo_ruta ? '/api/despacho/logo' : null }));
 
   // ---------- Tablero interno ----------
   app.get('/api/tablero', async (req) => {
@@ -405,7 +405,8 @@ export function crearApp({ config, pool, marce, logger = false }) {
     const { data } = await sharp(buffer).resize(200, 200, { fit: 'inside' }).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
     const colores = extraerColores(data);
     if (!colores) throw new ErrorHttp(400, 'No se pudieron leer colores del logo.');
-    const tema = construirTema({ ...colores, tipografia: req.despacho.tema.tipografia ?? 'Poppins' });
+    // Si el despacho ya definió su color de botones, se respeta; si no, sale del acento del logo.
+    const tema = construirTema({ ...colores, accion: req.despacho.tema.accion ?? undefined, tipografia: req.despacho.tema.tipografia ?? 'Poppins' });
     const { ruta } = await guardarArchivo({ carpeta: config.carpetaArchivos, despachoId: req.despacho.id, buffer, llave: config.llaveArchivos });
     await enDespacho(req, (c) => c.query(
       `UPDATE despachos SET tema = tema || $1::jsonb WHERE id = despacho_actual()`,

@@ -3,7 +3,7 @@ import Link from 'next/link';
 import { useState, useEffect, useCallback } from 'react';
 import { api } from '../lib/api';
 
-export function Encabezado({ despacho, subtitulo, usuario, enlaces = [] }) {
+export function Encabezado({ despacho, subtitulo, usuario, enlaces = [], logo }) {
   async function salir() {
     await api('/api/sesion', { metodo: 'DELETE' }).catch(() => {});
     location.href = '/entrar';
@@ -12,9 +12,9 @@ export function Encabezado({ despacho, subtitulo, usuario, enlaces = [] }) {
     <header className="bg-marca-fondo text-marca-texto-fondo">
       <div className="mx-auto flex max-w-7xl flex-wrap items-center gap-x-6 gap-y-2 px-4 py-3">
         <Link href="/" className="flex items-center gap-3">
-          <span aria-hidden className="grid h-9 w-9 place-items-center rounded-lg bg-marca-acento font-bold text-marca-fondo">
-            {(despacho ?? 'S').slice(0, 1)}
-          </span>
+          {logo
+            ? <img src={logo} alt="" className="h-9 w-9 rounded-lg bg-white object-contain" />
+            : <span aria-hidden className="grid h-9 w-9 place-items-center rounded-lg bg-marca-acento font-bold text-marca-fondo">{(despacho ?? 'S').slice(0, 1)}</span>}
           <span className="leading-tight">
             <span className="block font-semibold">{despacho}</span>
             {subtitulo && <span className="block text-xs opacity-80">{subtitulo}</span>}
@@ -79,7 +79,7 @@ const MENU_CONSULTOR = [
 ];
 
 export function EncabezadoConsultor({ yo }) {
-  return <Encabezado despacho={yo?.despacho} subtitulo="Consultores" usuario={yo?.usuario?.nombre} enlaces={MENU_CONSULTOR} />;
+  return <Encabezado despacho={yo?.despacho} subtitulo="Consultores" usuario={yo?.usuario?.nombre} enlaces={MENU_CONSULTOR} logo={yo?.logo} />;
 }
 
 export function Campo({ etiqueta, ayuda, children, className = '' }) {

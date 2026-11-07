@@ -236,3 +236,20 @@ test('configuración del despacho: colores manuales siempre pasan por el contras
   const hM = await entrar('mayela@capturar-correo.invalid');
   assert.equal((await pedir(hM, 'PATCH', '/api/despacho', { lema: 'x' })).status, 403);
 });
+
+test('subir logo: extrae colores pero respeta el botón de acción ya definido', async () => {
+  await base.superPool.query(`UPDATE despachos SET tema = tema || '{"accion":"#B35A0C"}'::jsonb`);
+  const hG = await entrar('gil191182@gmail.com');
+  const { default: sharp } = await import('sharp');
+  const png = await sharp(Buffer.from('<svg xmlns="http://www.w3.org/2000/svg" width="200" height="200"><rect width="200" height="200" fill="#0B3D2E"/><circle cx="100" cy="100" r="50" fill="#E63946"/></svg>')).png().toBuffer();
+  const mp = multipart('logo.png', png, 'image/png');
+  const r = await app.inject({ method: 'POST', url: '/api/despacho/logo', headers: { ...hG, 'content-type': mp.tipo }, payload: mp.payload });
+  assert.equal(r.statusCode, 200, r.body);
+  assert.equal(r.json().tema.accion, '#B35A0C');
+  const { rows: [d] } = await base.superPool.query(`SELECT tema FROM despachos WHERE subdominio = 'strateggia'`);
+  assert.equal(d.tema.accion, '#B35A0C');
+  assert.notEqual(d.tema.fondo, '#1B2440', 'el fondo sí sale del logo nuevo');
+  const logo = await app.inject({ url: '/api/despacho/logo', headers: H });
+  assert.equal(logo.headers['content-type'], 'image/png');
+  assert.equal((await pedir(hG, 'GET', '/api/yo')).json.logo, '/api/despacho/logo');
+});

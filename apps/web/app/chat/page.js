@@ -55,7 +55,7 @@ export default function Chat() {
                 {datos.publicaciones.map(p => (
                   <li key={p.id} className="rounded-lg border border-slate-200 p-3">
                     <div className="flex items-center justify-between gap-2"><b>Versión {p.version}</b><Etiqueta clase={ESTADO_PUB[p.estado]}>{p.estado}</Etiqueta></div>
-                    <p className="text-xs text-slate-500">{p.entorno} · pidió {p.solicitada_por} · {fechaHora(p.creado_en)}</p>
+                    <p className="text-xs text-slate-500">{p.entorno === 'produccion' ? 'Producción' : 'Staging'} · pidió {p.solicitada_por} · {fechaHora(p.creado_en)}</p>
                     <p className="mt-1 whitespace-pre-line">{p.cambios}</p>
                     {p.aprobada_por_nombre && <p className="mt-1 text-xs text-emerald-700">Aprobó {p.aprobada_por_nombre}</p>}
                     {p.nota && <p className="text-xs text-slate-600">Nota: {p.nota}</p>}
