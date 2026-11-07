@@ -2,6 +2,8 @@
 
 ## Preguntas de negocio / normativa (para Mayela)
 
+> Versión explicada, con ejemplos y qué documentos subir: [preguntas-mayela.md](preguntas-mayela.md)
+
 Son decisiones de ustedes; el sistema las deja marcadas y no inventa nada.
 Casi todo se puede capturar ya desde la pantalla **Clientes y permisos**.
 
