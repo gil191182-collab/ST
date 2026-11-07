@@ -209,8 +209,8 @@ export function crearApp({ config, pool, marce, logger = false }) {
     return enDespacho(req, async (c) => {
       const { rows } = await c.query(
         `UPDATE acciones SET estado = 'aprobada', aprobada_por = usuario_actual(), aprobada_en = now(),
-           borrador = coalesce($2, borrador)
-         WHERE id = $1 AND estado = 'propuesta' RETURNING id, tipo, estado`, [req.params.id, req.body?.borrador ?? null]);
+           borrador = coalesce($2, borrador), destinatario = coalesce($3, destinatario)
+         WHERE id = $1 AND estado = 'propuesta' RETURNING id, tipo, estado`, [req.params.id, req.body?.borrador ?? null, req.body?.destinatario ?? null]);
       if (!rows.length) throw new ErrorHttp(409, 'La acción no existe o ya no está esperando aprobación.');
       return rows[0];
     });

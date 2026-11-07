@@ -137,9 +137,9 @@ function PilotoAutomatico({ acciones, alCambiar }) {
   const [error, setError] = useState('');
   const [editando, setEditando] = useState(null);
   const pendientes = acciones.filter(a => a.estado === 'propuesta');
-  async function hacer(a, que, borrador) {
+  async function hacer(a, que, borrador, destinatario) {
     setError('');
-    try { await api(`/api/acciones/${a.id}/${que}`, { metodo: 'POST', datos: borrador ? { borrador } : {} }); setEditando(null); alCambiar(); }
+    try { await api(`/api/acciones/${a.id}/${que}`, { metodo: 'POST', datos: { ...(borrador ? { borrador } : {}), ...(destinatario ? { destinatario } : {}) } }); setEditando(null); alCambiar(); }
     catch (e) { setError(e.message); }
   }
   return (
@@ -154,7 +154,7 @@ function PilotoAutomatico({ acciones, alCambiar }) {
             </div>
             {a.destinatario && <div className="text-xs text-slate-500">Para: {a.destinatario}{a.canal ? ` · ${a.canal}` : ''}</div>}
             {editando === a.id ? (
-              <EditorBorrador inicial={a.borrador} alGuardar={(b) => hacer(a, 'aprobar', b)} alCancelar={() => setEditando(null)} />
+              <EditorBorrador inicial={a.borrador} destinatario={a.destinatario} alGuardar={(b, d) => hacer(a, 'aprobar', b, d)} alCancelar={() => setEditando(null)} />
             ) : (
               <p className="mt-2 whitespace-pre-line text-slate-700">{a.borrador}</p>
             )}
@@ -183,13 +183,15 @@ function PilotoAutomatico({ acciones, alCambiar }) {
   );
 }
 
-function EditorBorrador({ inicial, alGuardar, alCancelar }) {
+function EditorBorrador({ inicial, destinatario, alGuardar, alCancelar }) {
   const [texto, setTexto] = useState(inicial);
+  const [para, setPara] = useState(destinatario ?? '');
   return (
     <div className="mt-2 space-y-2">
+      <input value={para} onChange={e => setPara(e.target.value)} className="w-full rounded-md border border-slate-300 p-2 text-sm" aria-label="Destinatario" placeholder="Nombre del contacto, correo o teléfono" />
       <textarea value={texto} onChange={e => setTexto(e.target.value)} rows={5} className="w-full rounded-md border border-slate-300 p-2 text-sm" aria-label="Borrador" />
       <div className="flex gap-2">
-        <button onClick={() => alGuardar(texto)} className="boton-accion rounded-md px-3 py-1.5 text-xs font-medium">Aprobar con cambios</button>
+        <button onClick={() => alGuardar(texto, para)} className="boton-accion rounded-md px-3 py-1.5 text-xs font-medium">Aprobar con cambios</button>
         <button onClick={alCancelar} className="boton-sec rounded-md px-3 py-1.5 text-xs ring-1 ring-slate-300">Cancelar</button>
       </div>
     </div>

@@ -8,6 +8,8 @@ import { crearPool, conDespacho, despachosActivos } from './db.js';
 import { recalcularPlazos } from './plazos.js';
 import { listarExpedientes, pendientesDe } from './consultas.js';
 import { crearCanales } from './canales.js';
+import { configImap, leerBandeja, procesarCorreoEntrante } from './correo.js';
+import { despachoPorSubdominio } from './db.js';
 
 const ENVIABLES = ['recordatorio', 'correo', 'whatsapp'];
 
@@ -43,18 +45,40 @@ export async function prepararRecordatorios(client, { hoy = hoyMexico() } = {}) 
   return creadas;
 }
 
+/**
+ * A quién se envía: el correo o teléfono escrito en "destinatario", o el del contacto
+ * del expediente SOLO si el destinatario es ese contacto. Nunca se adivina.
+ */
+export function direccionDe(a) {
+  const dest = String(a.destinatario ?? '');
+  const esContacto = a.contacto_nombre && dest.trim().toLowerCase() === a.contacto_nombre.trim().toLowerCase();
+  if (a.canal === 'correo') {
+    const m = /[\w.+-]+@[\w-]+\.[\w.-]+/.exec(dest);
+    if (m) return { valor: m[0] };
+    if (esContacto && a.correo) return { valor: a.correo };
+    return { error: `No hay correo para «${dest}». Edite el destinatario con su correo.` };
+  }
+  const digitos = dest.replace(/\D/g, '');
+  if (digitos.length >= 10) return { valor: digitos };
+  if (esContacto && a.telefono) return { valor: a.telefono };
+  return { error: `No hay teléfono para «${dest}». Capture el teléfono del contacto o edite el destinatario.` };
+}
+
 /** Envía las acciones aprobadas por una persona. Nunca toca ingreso/firma/escrito/cobro. */
 export async function enviarAprobadas(client, canales) {
   const { rows } = await client.query(
-    `SELECT a.*, ct.telefono, ct.correo FROM acciones a
+    `SELECT a.*, ct.telefono, ct.correo, ct.nombre AS contacto_nombre FROM acciones a
      LEFT JOIN expedientes e ON e.id = a.expediente_id LEFT JOIN contactos ct ON ct.id = e.contacto_id
      WHERE a.estado = 'aprobada' AND a.tipo = ANY($1) AND a.archivado_en IS NULL
        AND (a.programada_para IS NULL OR a.programada_para <= now())`, [ENVIABLES]);
   const resultado = [];
   for (const a of rows) {
-    const r = a.canal === 'correo'
-      ? await canales.correo({ para: a.correo, asunto: a.asunto ?? 'Seguimiento de su trámite', texto: a.borrador })
-      : await canales.whatsapp({ telefono: a.telefono, texto: a.borrador });
+    // Si el canal no está configurado, el canal mismo lo dice (aviso más útil que la dirección)
+    const dir = canales.configurados?.[a.canal === 'correo' ? 'correo' : 'whatsapp'] === false ? { valor: null } : direccionDe(a);
+    const r = dir.error ? { ok: false, error: dir.error }
+      : a.canal === 'correo'
+        ? await canales.correo({ para: dir.valor, asunto: a.asunto ?? 'Seguimiento de su trámite', texto: a.borrador })
+        : await canales.whatsapp({ telefono: dir.valor, texto: a.borrador });
     if (r.ok) {
       await client.query(`UPDATE acciones SET estado = 'enviada', ejecutada_en = now(), error = NULL WHERE id = $1`, [a.id]);
       await client.query(
@@ -69,7 +93,20 @@ export async function enviarAprobadas(client, canales) {
   return resultado;
 }
 
-export async function ciclo(pool, { canales = crearCanales(), log = console.log } = {}) {
+/** Lee la bandeja del despacho (solo lectura) y registra las notificaciones de la ATTRAPI. */
+export async function revisarCorreo(pool, cfg, opciones = {}) {
+  const d = await despachoPorSubdominio(pool, cfg.despacho);
+  if (!d) return [];
+  return leerBandeja(cfg, (correo) => conDespacho(pool, { despachoId: d.id, actor: 'sistema' }, (c) => procesarCorreoEntrante(c, correo)), opciones);
+}
+
+export async function ciclo(pool, { canales = crearCanales(), log = console.log, imap = configImap() } = {}) {
+  if (imap) {
+    try {
+      const r = await revisarCorreo(pool, imap);
+      log(JSON.stringify({ correo: { leidos: r.length, deLaAutoridad: r.filter(x => x.clasificacion?.esAutoridad && !x.duplicado).length } }));
+    } catch (e) { log(`No se pudo leer el correo: ${e.message}`); }
+  }
   for (const despachoId of await despachosActivos(pool)) {
     const ctx = { despachoId, actor: 'sistema' };
     try {

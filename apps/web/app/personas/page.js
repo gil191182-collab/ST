@@ -49,6 +49,7 @@ export default function Personas() {
                       <td>{p.archivado_en ? <Etiqueta clase="bg-slate-200 text-slate-700">Archivado</Etiqueta> : p.activo ? <Etiqueta clase="bg-emerald-100 text-emerald-800">Activo</Etiqueta> : <Etiqueta clase="bg-amber-100 text-amber-900">Invitado</Etiqueta>}</td>
                       <td className="space-x-2 text-right">
                         {!p.archivado_en && (esDirector || p.rol === 'cliente') && <button onClick={() => accion(`/api/usuarios/${p.id}/restablecer`)} className="text-xs text-marca-acento-texto underline">Nuevo enlace</button>}
+                        {!p.archivado_en && esDirector && <button onClick={async () => { const correo = prompt(`Correo de ${p.nombre}:`, p.correo); if (correo && correo !== p.correo) { try { await api(`/api/usuarios/${p.id}`, { metodo: 'PATCH', datos: { correo } }); await cargar(); } catch (e) { setAviso(e.message); } } }} className="text-xs text-marca-acento-texto underline">Cambiar correo</button>}
                         {!p.archivado_en && esDirector && p.id !== yo.usuario.id && <button onClick={() => confirm(`¿Archivar a ${p.nombre}? Ya no podrá entrar.`) && accion(`/api/usuarios/${p.id}/archivar`)} className="text-xs text-slate-600 underline">Archivar</button>}
                       </td>
                     </tr>

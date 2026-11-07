@@ -62,14 +62,21 @@ sudo docker compose --profile herramientas run --rm migrar node db/migrar.js --s
 sudo docker compose up -d api worker web
 ```
 
-Contraseñas de Gil y Mayela (la pide sin mostrarla):
+Contraseña de Gil (la pide sin mostrarla). Después, Gil invita a Mayela y a los
+clientes desde la pantalla **Personas**, que genera un enlace de un solo uso:
 
 ```bash
 sudo docker compose exec api node apps/api/src/definir-clave.js strateggia gil191182@gmail.com
 ```
 
-> El correo de Mayela está como `mayela@capturar-correo.invalid` hasta que se
-> confirme el real (ver `docs/pendientes.md`).
+> El correo de Mayela está como `mayela@capturar-correo.invalid`: Gil lo corrige en
+> **Personas → Cambiar correo** y luego le genera su enlace con **Nuevo enlace**.
+
+## 4b. Conexiones (WhatsApp, correo, IA)
+
+Ver la tabla "Lo que hay que conectar" en `docs/pendientes.md`. Cada conexión es
+opcional: sin ella, el sistema funciona y avisa en pantalla que ese canal no está
+configurado; nunca finge un envío.
 
 ## 5. Nginx y certificado
 
@@ -107,7 +114,10 @@ sudo bash infra/scripts/respaldo.sh && sudo bash infra/scripts/probar-restauraci
 
 ## 7. Publicar versiones
 
-Siempre en `staging` primero; producción solo con la aprobación de Gil.
+Siempre en `staging` primero (con `PUBLICAR_ENTORNO=staging` en el `.env` de staging).
+Para producción: en la pantalla **Chat de consultores** se pide la publicación con
+el número de versión; Gil la aprueba con un clic. El script **se niega** a publicar
+en producción una versión sin esa aprobación.
 
 ```bash
 sudo bash infra/scripts/publicar.sh <rama-o-etiqueta>

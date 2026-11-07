@@ -2,7 +2,8 @@
 // Se guardan en el expediente que corresponda y generan una alerta interna.
 // No se responde nada en automático: el piloto automático solo propone.
 import crypto from 'node:crypto';
-import { clasificarCorreo, folioPermiso, telefonoClave } from '@logistics/dominio';
+import { telefonoClave } from '@logistics/dominio';
+import { procesarCorreoEntrante } from '../correo.js';
 import { conDespacho, despachoPorSubdominio } from '../db.js';
 
 export function rutasEntradas(app, { config, pool, ErrorHttp }) {
@@ -64,26 +65,7 @@ export function rutasEntradas(app, { config, pool, ErrorHttp }) {
   }, async (req) => {
     verificarToken(req);
     const despacho = await despachoDe(req);
-    const b = req.body;
-    const clasif = clasificarCorreo({ de: b.de, asunto: b.asunto, texto: b.texto ?? '' });
-    if (!clasif.esAutoridad) return { ok: true, ignorado: 'no parece de la autoridad', clasificacion: clasif };
-    return conDespacho(pool, { despachoId: despacho.id, actor: 'sistema' }, async (c) => {
-      // Buscar el permiso mencionado (por folio, para que coincidan homoclave anterior y actual)
-      const folios = new Set(clasif.permisos.map(folioPermiso).filter(Boolean));
-      const { rows: permisos } = await c.query(`SELECT p.id, p.numero, cl.nombre_corto FROM permisos p JOIN terminales t ON t.id = p.terminal_id JOIN clientes cl ON cl.id = t.cliente_id WHERE p.archivado_en IS NULL`);
-      const permiso = permisos.find(p => folios.has(folioPermiso(p.numero)));
-      const exp = permiso ? (await c.query(SQL_ACTIVO.replace('%s', 'e.permiso_id = $1'), [permiso.id])).rows[0] : null;
-      const { rows } = await c.query(
-        `INSERT INTO mensajes (despacho_id, expediente_id, canal, direccion, autor_tipo, autor_nombre, remitente, texto, id_externo)
-         VALUES (despacho_actual(), $1, 'correo', 'entrante', 'externo', 'ATTRAPI', $2, $3, $4) ON CONFLICT DO NOTHING RETURNING id`,
-        [exp?.id ?? null, b.de, `${b.asunto}\n\n${(b.texto ?? '').slice(0, 20000)}`, b.id ?? null]);
-      if (!rows.length) return { ok: true, duplicado: true };
-      const quien = permiso ? `${permiso.nombre_corto} (${permiso.numero})` : 'permiso no identificado';
-      const oficios = clasif.oficios.length ? ` Oficio(s): ${clasif.oficios.join(', ')}.` : '';
-      const siguiente = clasif.tipo === 'requerimiento' ? ' Revisar el requerimiento y su plazo.'
-        : ['acuerdo', 'oficio'].includes(clasif.tipo) ? ' Si es una resolución, regístrela para que se recalculen los plazos.' : '';
-      await alerta(c, exp?.id ?? null, `Notificación de la ATTRAPI · ${quien}: «${b.asunto}».${oficios}${siguiente}`);
-      return { ok: true, expediente: exp?.id ?? null, clasificacion: clasif };
-    });
+    const r = await conDespacho(pool, { despachoId: despacho.id, actor: 'sistema' }, (c) => procesarCorreoEntrante(c, req.body));
+    return { ok: true, ...r };
   });
 }

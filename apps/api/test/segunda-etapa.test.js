@@ -253,3 +253,13 @@ test('subir logo: extrae colores pero respeta el botón de acción ya definido',
   assert.equal(logo.headers['content-type'], 'image/png');
   assert.equal((await pedir(hG, 'GET', '/api/yo')).json.logo, '/api/despacho/logo');
 });
+
+test('el director corrige el correo de una persona sin perder sus expedientes', async () => {
+  const hG = await entrar('gil191182@gmail.com');
+  const r = await pedir(hG, 'PATCH', `/api/usuarios/${IDS.mayela}`, { correo: 'mayela.romero@strateggia.mx' });
+  assert.equal(r.status, 200, JSON.stringify(r.json));
+  await entrar('mayela.romero@strateggia.mx');
+  const { rows: [e] } = await base.superPool.query(`SELECT consultor_id FROM expedientes WHERE id = $1`, [IDS.expKeri]);
+  assert.equal(e.consultor_id, IDS.mayela);
+  await pedir(hG, 'PATCH', `/api/usuarios/${IDS.mayela}`, { correo: 'mayela@capturar-correo.invalid' });
+});

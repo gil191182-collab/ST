@@ -55,6 +55,26 @@ export function rutasUsuarios(app, { config, pool, ErrorHttp, enDespacho, soloCo
     });
   });
 
+  // Corregir nombre, correo o teléfono (el rol no se cambia aquí)
+  app.patch('/api/usuarios/:id', {
+    schema: { body: { type: 'object', additionalProperties: false, properties: {
+      nombre: { type: 'string', minLength: 2 }, correo: { type: 'string', format: 'email' }, telefono: { type: 'string' } } } },
+  }, async (req) => {
+    soloDirector(req);
+    const b = req.body;
+    return enDespacho(req, async (c) => {
+      if (b.correo) {
+        const { rows } = await c.query(`SELECT 1 FROM usuarios WHERE lower(correo) = lower($1) AND id <> $2`, [b.correo, req.params.id]);
+        if (rows.length) throw new ErrorHttp(409, 'Ya existe otra persona con ese correo.');
+      }
+      const { rows } = await c.query(
+        `UPDATE usuarios SET nombre = coalesce($2, nombre), correo = coalesce($3, correo), telefono = coalesce($4, telefono)
+         WHERE id = $1 AND archivado_en IS NULL RETURNING id, nombre, correo`, [req.params.id, b.nombre ?? null, b.correo ?? null, b.telefono ?? null]);
+      if (!rows.length) throw new ErrorHttp(404, 'Persona no encontrada.');
+      return rows[0];
+    });
+  });
+
   app.post('/api/usuarios/:id/archivar', async (req) => {
     soloDirector(req);
     if (req.params.id === req.usuario.id) throw new ErrorHttp(400, 'No puede archivarse a sí mismo.');
