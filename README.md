@@ -12,7 +12,7 @@ la ATTRAPI. Las reglas del proyecto están en [CLAUDE.md](CLAUDE.md).
 | `packages/dominio` | Reglas del negocio sin base de datos: plazos, textos exactos, revisión automática, colores de marca y contraste |
 | `apps/api` | API (Fastify), Marce (Claude), trabajador en segundo plano, envío por WhatsApp/correo **solo de lo aprobado** |
 | `apps/web` | Panel de consultores y portal del cliente (Next.js + Tailwind) |
-| `infra` | Nginx, inventario del servidor, respaldos, prueba de restauración y publicación con regreso |
+| `infra` | Bloque de Caddy, instalación, inventario del servidor, respaldos, prueba de restauración y publicación con regreso |
 | `docs` | Instalación, servidor, pendientes |
 
 ## Reglas que no se negocian y dónde se cumplen

@@ -1,147 +1,112 @@
-# Instalación en el servidor (IONOS)
+# Instalación en el servidor (198.251.77.138, IONOS)
 
-Sigue el orden de CLAUDE.md §7. Ningún paso toca CertifAI: Logistics tiene su
-propia carpeta (`/opt/logistics/app`), su propia red de Docker (`logistics_red`),
-su propia base (volumen `logistics_postgres`) y su propio bloque de Nginx.
+Inventario del 7 nov 2026 en `docs/servidor.md`. En el servidor ya corren CertifAI,
+VerifyPerson, VerifAI, ReclutAI y servicios auxiliares; todos se publican con el
+**Caddy** del contenedor `certifai-caddy` (no hay Nginx).
 
-> Los comandos se corren en el VPS como administrador (`sudo`).
+Logistics usa su propia carpeta (`/opt/logistics/app`), su propia base y su propia
+red. Lo único que se agrega fuera de ella es **un bloque al final** de
+`/opt/certifai/app/Caddyfile`, con copia de seguridad previa.
 
-## 1. Inventario (antes de instalar nada)
+> Todos los comandos se pegan en la sesión `ssh root@198.251.77.138`.
 
-Primero se copia el repositorio y se corre el inventario, que **solo lee** información:
+## 0. Antes (en horario sin gestores)
+
+1. **Snapshot** en el panel de IONOS: Servidores y nube → el servidor → Snapshots → Crear.
+2. **Respaldo de las bases existentes** (solo lee):
 
 ```bash
-sudo mkdir -p /opt/logistics && cd /opt/logistics
+mkdir -p /opt/respaldos-previos && for c in certifai-db verifyperson-db verifai-db reclutai-db; do docker exec $c sh -c 'pg_dumpall -U "$POSTGRES_USER"' | gzip > /opt/respaldos-previos/$c-$(date +%Y%m%d).sql.gz; done; ls -lh /opt/respaldos-previos
 ```
 
+3. **Cambio a VPS Linux L** (4 vCPU, 8 GB, 240 GB) en el panel. El servidor se reinicia.
+4. Comprobar que todo volvió:
+
 ```bash
-sudo git clone https://github.com/gil191182-collab/ST.git app && cd app
+echo "CPUs: $(nproc)"; free -h; df -h /; docker ps --format 'table {{.Names}}\t{{.Status}}'
 ```
 
+## 1. Descargar Logistics
+
 ```bash
-sudo bash infra/scripts/inventario.sh > /tmp/inventario.md
+mkdir -p /opt/logistics && git clone -b claude/stoic-newton-uisu2d https://github.com/gil191182-collab/ST.git /opt/logistics/app
 ```
 
-Revisar `/tmp/inventario.md`, quitar datos sensibles y pasarlo a `docs/servidor.md`.
-**Revisar especialmente:** que los puertos 3100 y 3101 estén libres (si no, cambiar
-`WEB_PUERTO_HOST`/`API_PUERTO_HOST` en `.env` y en `infra/nginx/logistics.conf`),
-la RAM libre y el disco.
-
-## 2. DNS
-
-El inventario muestra el registro A de `logistics.strateggia.mx` y la IP del
-servidor; deben coincidir. Para despachos con subdominio propio hace falta además
-un registro `*.logistics.strateggia.mx` apuntando a la misma IP.
-
-## 3. Configuración
+## 2. Instalar (≈10–15 minutos)
 
 ```bash
-sudo cp .env.example .env && sudo chmod 600 .env && sudo nano .env
+cd /opt/logistics/app && bash infra/scripts/instalar.sh
 ```
 
-Generar cada secreto con el comando que viene al lado en `.env.example`.
-**La `ARCHIVOS_LLAVE` y la `RESPALDO_CLAVE_GPG` se guardan también fuera del
-servidor** (por ejemplo en el gestor de contraseñas de Gil): sin ellas no se
-pueden abrir los archivos ni los respaldos.
+Crea el `.env` con secretos nuevos, construye, crea la base, carga catálogo y pilotos,
+arranca y al final pide la contraseña de Gil (no se ve al escribirla).
 
-## 4. Arranque
+**Guarde fuera del servidor** `ARCHIVOS_LLAVE` y `RESPALDO_CLAVE_GPG` (sin ellas no se
+abren archivos ni respaldos):
 
 ```bash
-sudo docker compose build
+grep -E '^(ARCHIVOS_LLAVE|RESPALDO_CLAVE_GPG)=' /opt/logistics/app/.env
 ```
 
+## 3. Publicar en https://logistics.strateggia.mx (con aprobación de Gil)
+
 ```bash
-sudo docker compose up -d postgres
+cd /opt/logistics/app && bash infra/scripts/conectar-caddy.sh
 ```
 
+Respalda el Caddyfile, agrega el bloque de Logistics al final, conecta Caddy a la red
+`logistics-proxy` y recarga **sin reiniciar**. Si algo estuviera mal, Caddy lo rechaza
+y los demás sitios siguen igual. Si alguna vez CertifAI recrea su Caddy, basta con
+volver a correr este mismo script (no duplica nada).
+
+Para quitarlo: borrar el bloque marcado "Strateggia Logistics" del Caddyfile y
+`docker exec certifai-caddy caddy reload --config /etc/caddy/Caddyfile`.
+
+## 4. Primeros pasos en el sistema
+
+1. Entrar como Gil en https://logistics.strateggia.mx
+2. **Personas → Cambiar correo** de Mayela al real → **Nuevo enlace** y enviárselo.
+3. **Clientes y permisos → Corregir domicilio** de los permisos 0056, 0058 y 0036.
+
+## 5. Respaldos diarios
+
 ```bash
-sudo docker compose --profile herramientas run --rm migrar node db/migrar.js --semillas
+apt-get install -y rclone gpg
 ```
 
+Configurar el destino fuera de IONOS con `rclone config`, poner su nombre en
+`RESPALDO_DESTINO_REMOTO` del `.env` y programar:
+
 ```bash
-sudo docker compose up -d api worker web
+echo '15 3 * * * root /opt/logistics/app/infra/scripts/respaldo.sh >> /var/log/logistics-respaldo.log 2>&1' > /etc/cron.d/logistics-respaldo
 ```
 
-Contraseña de Gil (la pide sin mostrarla). Después, Gil invita a Mayela y a los
-clientes desde la pantalla **Personas**, que genera un enlace de un solo uso:
+Probar que se puede restaurar (no toca la base real):
 
 ```bash
-sudo docker compose exec api node apps/api/src/definir-clave.js strateggia gil191182@gmail.com
+cd /opt/logistics/app && bash infra/scripts/respaldo.sh && bash infra/scripts/probar-restauracion.sh
 ```
 
-> El correo de Mayela está como `mayela@capturar-correo.invalid`: Gil lo corrige en
-> **Personas → Cambiar correo** y luego le genera su enlace con **Nuevo enlace**.
+## 6. Conexiones (cuando se tengan)
 
-## 4b. Conexiones (WhatsApp, correo, IA)
-
-Ver la tabla "Lo que hay que conectar" en `docs/pendientes.md`. Cada conexión es
-opcional: sin ella, el sistema funciona y avisa en pantalla que ese canal no está
-configurado; nunca finge un envío.
-
-## 5. Nginx y certificado
+Ver la tabla "Lo que hay que conectar" en `docs/pendientes.md` (IA, WATI, correo).
+Se editan en `/opt/logistics/app/.env` y se aplican con:
 
 ```bash
-sudo cp infra/nginx/logistics.conf /etc/nginx/sites-available/logistics.conf
+cd /opt/logistics/app && docker compose up -d api worker
 ```
 
-Primero el certificado (con Nginx sirviendo el reto en el puerto 80):
+## Publicar versiones nuevas
+
+Staging primero; producción solo con la aprobación de Gil en el **Chat de
+consultores**. El script se niega sin esa aprobación:
 
 ```bash
-sudo certbot certonly --webroot -w /var/www/certbot -d logistics.strateggia.mx -d staging.logistics.strateggia.mx
-```
-
-```bash
-sudo ln -s /etc/nginx/sites-available/logistics.conf /etc/nginx/sites-enabled/ && sudo nginx -t && sudo systemctl reload nginx
-```
-
-`nginx -t` revisa toda la configuración (incluida la de CertifAI) antes de
-recargar; si marca error, **no** se recarga y CertifAI sigue igual.
-
-## 6. Respaldos
-
-Instalar `rclone` y configurar el destino fuera de IONOS (`rclone config`), poner
-el nombre en `RESPALDO_DESTINO_REMOTO` y programar:
-
-```bash
-echo '15 3 * * * root /opt/logistics/app/infra/scripts/respaldo.sh >> /var/log/logistics-respaldo.log 2>&1' | sudo tee /etc/cron.d/logistics-respaldo
-```
-
-Probar la restauración (no toca la base real):
-
-```bash
-sudo bash infra/scripts/respaldo.sh && sudo bash infra/scripts/probar-restauracion.sh
-```
-
-## 7. Publicar versiones
-
-Siempre en `staging` primero (con `PUBLICAR_ENTORNO=staging` en el `.env` de staging).
-Para producción: en la pantalla **Chat de consultores** se pide la publicación con
-el número de versión; Gil la aprueba con un clic. El script **se niega** a publicar
-en producción una versión sin esa aprobación.
-
-```bash
-sudo bash infra/scripts/publicar.sh <rama-o-etiqueta>
+cd /opt/logistics/app && bash infra/scripts/publicar.sh <version>
 ```
 
 Regresar a la versión anterior:
 
 ```bash
-sudo bash infra/scripts/publicar.sh --regresar
+cd /opt/logistics/app && bash infra/scripts/publicar.sh --regresar
 ```
-
-## Restaurar un respaldo en producción (emergencia)
-
-1. Detener la app: `sudo docker compose stop api worker web`
-2. Descifrar: `gpg -d -o /tmp/base.dump /opt/logistics/respaldos/base-AAAAMMDD-HHMM.dump.gpg`
-3. Restaurar: `sudo docker compose exec -T postgres pg_restore -U logistics_admin -d logistics --clean --if-exists < /tmp/base.dump`
-4. Arrancar: `sudo docker compose up -d api worker web`
-
-> El paso 3 reemplaza la base. Hacerlo solo con la aprobación de Gil.
-
-## Capacidad
-
-Medido en pruebas (sin usuarios): ~120 MB de RAM para los cuatro contenedores.
-Límites puestos en `docker-compose.yml`: 512 MB PostgreSQL, 320 MB API, 192 MB
-trabajador, 384 MB web (≈1.4 GB máximo). Con 4 GB compartidos con CertifAI,
-medir con `docker stats` antes de abrir a clientes; la recomendación sigue siendo
-subir a 4 vCPU y 8 GB.

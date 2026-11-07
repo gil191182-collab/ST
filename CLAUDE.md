@@ -26,14 +26,14 @@ La especificación completa está en el documento "Strateggia Logistics — Bosq
 | Frontend | Next.js + Tailwind |
 | Contenedores | Docker + docker-compose, en `/opt/logistics/app` |
 | Servidor | VPS Linux M de IONOS, Ubuntu 24.04 (el mismo de CertifAI). La IP va en `.env`, nunca en el código |
-| Proxy | Nginx + Let's Encrypt; logistics.strateggia.mx y subdominios por despacho |
+| Proxy | Caddy compartido del servidor (contenedor `certifai-caddy`, HTTPS automático con Let's Encrypt). Logistics solo agrega su bloque al final del Caddyfile y se conecta por la red `logistics-proxy`. (Se planteó en lugar de Nginx el 7 nov 2026: Nginx chocaría con Caddy por los puertos 80/443.) |
 | Archivos | Disco del servidor, cifrados, con URLs firmadas; sincronización opcional con Google Drive por despacho |
 | WhatsApp | WATI (Strateggia usa su número actual) |
 | Correo | Cuenta conectada por despacho (Strateggia: la de Mayela, que recibe las notificaciones de la ATTRAPI) |
 | IA | API de Anthropic (Claude) para "Marce": asistente, piloto automático y pre-revisión de documentos |
 | Facturación | Fuera del sistema. Aquí solo se registran hitos, orden de compra, folio y estatus |
 
-CertifAI vive en el mismo servidor (`/opt/certifai/app`). **No toques sus contenedores, su base ni su configuración de Nginx.** Logistics usa su propia red de Docker, su propia base y su propio bloque de Nginx.
+CertifAI vive en el mismo servidor (`/opt/certifai/app`). **No toques sus contenedores, su base ni sus bloques del Caddyfile.** Logistics usa su propia red de Docker, su propia base y su propio bloque en el Caddyfile.
 
 ## 4. Reglas del dominio que NO se negocian
 
@@ -79,7 +79,7 @@ Marce puede leer y cambiar todo el código siguiendo este camino. No puede borra
 
 1. Inventario: qué corre hoy (CertifAI, n8n, Nginx, puertos, RAM y disco libres). Documentarlo en `/docs/servidor.md` antes de instalar nada.
 2. Confirmar que el registro A de logistics.strateggia.mx apunta al servidor.
-3. Crear `/opt/logistics/app` con docker-compose (app, api, worker, postgres propio), bloque de Nginx y certificado.
+3. Crear `/opt/logistics/app` con docker-compose (app, api, worker, postgres propio), bloque en Caddy y certificado.
 4. Respaldo diario de la base y los archivos, con copia fuera de IONOS, probado con una restauración.
 5. Cargar el catálogo inicial y los expedientes piloto:
    - KERI (Inicio de Operaciones, vence el 2 dic 2026)

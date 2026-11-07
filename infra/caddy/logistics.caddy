@@ -1,0 +1,18 @@
+# Strateggia Logistics (sistema aparte, en /opt/logistics/app). Solo se enruta aquí;
+# su web y su API llegan por la red logistics-proxy. Si se quita este bloque,
+# Logistics deja de verse en internet; CertifAI no cambia en nada.
+logistics.strateggia.mx {
+	encode gzip
+	request_body {
+		max_size 50MB
+	}
+	header {
+		Strict-Transport-Security "max-age=31536000"
+		X-Content-Type-Options nosniff
+		X-Frame-Options DENY
+		Referrer-Policy strict-origin-when-cross-origin
+	}
+	@api path /api/* /archivos/*
+	reverse_proxy @api logistics-api:3101
+	reverse_proxy logistics-web:3100
+}

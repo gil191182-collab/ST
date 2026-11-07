@@ -59,6 +59,9 @@ if [[ "$ENTORNO" == "produccion" ]]; then
     "UPDATE publicaciones SET estado = 'publicada', publicada_en = now() WHERE id = (SELECT id FROM publicacion_aprobada('$ETIQUETA'))"
 fi
 
+# Si CertifAI recreó su Caddy, volver a conectarlo a la red de Logistics (no hace daño si ya lo está)
+docker network connect logistics-proxy certifai-caddy 2>/dev/null || true
+
 sleep 5
 docker compose ps
 curl -fsS "http://127.0.0.1:${API_PUERTO_HOST:-3101}/api/salud" && echo " ✔ Versión $ETIQUETA arriba."
