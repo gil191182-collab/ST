@@ -7,7 +7,9 @@ export function crearCanales(env = process.env, fetchImpl = globalThis.fetch, tr
   // su llave solo manda plantillas lg_* y solo se entera de las conversaciones que abrió.
   // WA_REAL=1 es el interruptor: sin él no se manda nada aunque haya llave.
   const wa = env.WA_MCP_URL && env.WA_LLAVE && env.WA_REAL === '1'
-    ? { url: env.WA_MCP_URL.replace(/\/$/, ''), llave: env.WA_LLAVE, plantilla: env.WA_PLANTILLA || 'lg_recordatorio' } : null;
+    ? { url: env.WA_MCP_URL.replace(/\/$/, ''), llave: env.WA_LLAVE, plantilla: env.WA_PLANTILLA || 'lg_recordatorio',
+        // La categoría que Meta le asignó a la plantilla (cuenta para el tope diario de marketing de wa-mcp)
+        categoria: (env.WA_PLANTILLA_CATEGORIA || 'marketing').toLowerCase() } : null;
   const smtp = env.SMTP_HOST && env.SMTP_USUARIO && env.SMTP_CLAVE ? {
     host: env.SMTP_HOST, port: Number(env.SMTP_PUERTO ?? 465), secure: env.SMTP_SEGURO !== 'false',
     auth: { user: env.SMTP_USUARIO, pass: env.SMTP_CLAVE },
@@ -52,7 +54,7 @@ export function crearCanales(env = process.env, fetchImpl = globalThis.fetch, tr
         if (!ventanaCerrada) return { ok: false, error: `wa-mcp: ${t.datos.error ?? `HTTP ${t.estatus}`}` };
         if (!variables?.length) return { ok: false, error: 'La conversación está cerrada (más de 24 h) y no hay datos para la plantilla.' };
         const p = await llamarWa('/plantillas/enviar', {
-          telefono: numero, plantilla: wa.plantilla, categoria: 'utility', idioma: 'es_MX', variables: variables.map(limpiarVariable),
+          telefono: numero, plantilla: wa.plantilla, categoria: wa.categoria, idioma: 'es_MX', variables: variables.map(limpiarVariable),
         });
         if (p.ok) return { ok: true, via: `plantilla ${wa.plantilla}` };
         return { ok: false, error: `wa-mcp (plantilla): ${p.datos.error ?? `HTTP ${p.estatus}`}` };

@@ -208,7 +208,7 @@ test('piloto automático: prepara recordatorio, no lo envía hasta que una perso
   const p = enviados[1].cuerpo;
   assert.equal(p.telefono, '524490000000');
   assert.equal(p.plantilla, 'lg_recordatorio');
-  assert.equal(p.categoria, 'utility');
+  assert.equal(p.categoria, 'marketing', 'Meta clasificó lg_recordatorio como marketing');
   assert.equal(p.variables[0], 'Omar');
   assert.equal(p.variables[1], 'Mayela Romero Pérez');
   assert.equal(p.variables[2], 'Constancia de Inicio de Operaciones');
