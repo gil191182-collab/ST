@@ -44,7 +44,7 @@ before(async () => {
   await base.superPool.query(`UPDATE permisos SET domicilio_textual = 'Carretera Panamericana, Km. 59.8, Soledad de Abajo, Cosío, Aguascalientes' WHERE id = $1`, [IDS.permisoKeri]);
   marceFalsa = {};
   const clienteFalso = { beta: { messages: { create: async (p) => { marceFalsa.ultimo = p; return marceFalsa.respuesta; } } } };
-  const config = cargarConfig({ DATABASE_URL: base.appUrl, ARCHIVOS_CARPETA: carpeta, ENTRADAS_TOKEN: TOKEN });
+  const config = cargarConfig({ DATABASE_URL: base.appUrl, ARCHIVOS_CARPETA: carpeta, ENTRADAS_TOKEN: TOKEN, WA_SECRETO_WEBHOOK: 'whsec_prueba' });
   app = crearApp({ config, pool, marce: crearMarce({ modelo: 'claude-opus-5-5', activo: true, cliente: clienteFalso }) });
   await app.ready();
 });
@@ -180,14 +180,27 @@ test('plantilla anónima: solo de referencias autorizadas y sin datos del client
   assert.equal((await pedir(h, 'GET', '/api/plantillas')).json.length, 1);
 });
 
-test('WhatsApp entrante: se reconoce al contacto, va a su expediente y genera alerta', async () => {
-  assert.equal((await pedir({}, 'POST', '/api/entradas/whatsapp?token=malo', { waId: '1', text: 'x' })).status, 401);
-  const r = await pedir({}, 'POST', `/api/entradas/whatsapp?token=${TOKEN}&despacho=strateggia`, { id: 'wamid.1', waId: '5214491112233', senderName: 'Omar', text: 'Ya subimos el comprobante' });
-  assert.equal(r.json.expediente, IDS.expKeri);
-  const dup = await pedir({}, 'POST', `/api/entradas/whatsapp?token=${TOKEN}`, { id: 'wamid.1', waId: '5214491112233', text: 'Ya subimos el comprobante' });
-  assert.equal(dup.json.duplicado, true);
+test('WhatsApp entrante por wa-mcp: firma verificada, va al expediente y genera alerta', async () => {
+  const crypto = await import('node:crypto');
+  const enviar = (obj, firma) => {
+    const cuerpo = JSON.stringify(obj);
+    const f = firma ?? 'sha256=' + crypto.createHmac('sha256', 'whsec_prueba').update(cuerpo).digest('hex');
+    return app.inject({ method: 'POST', url: '/api/entradas/wa-mcp?despacho=strateggia', payload: cuerpo,
+      headers: { 'content-type': 'application/json', 'x-wa-evento': obj.evento, 'x-wa-signature': f } });
+  };
+  const aviso = { evento: 'mensaje_entrante', espacio: 'strateggia', ts: new Date().toISOString(),
+    datos: { telefono: '524491112233', nombre: 'Omar', texto: 'Ya subimos el comprobante', tipo: 'text', wa_message_id: 'wamid.1' } };
+  assert.equal((await enviar(aviso, 'sha256=falsa')).statusCode, 401, 'sin firma válida no se acepta');
+  const r = await enviar(aviso);
+  assert.equal(r.statusCode, 200, r.body);
+  assert.equal(r.json().expediente, IDS.expKeri);
+  assert.equal((await enviar(aviso)).json().duplicado, true);
   const { rows } = await base.superPool.query(`SELECT borrador FROM acciones WHERE tipo = 'alerta_interna' AND borrador LIKE 'WhatsApp de Omar%'`);
   assert.equal(rows.length, 1);
+  const baja = await enviar({ evento: 'baja', espacio: 'strateggia', datos: { telefono: '524491112233', texto: 'ya no me escriban' } });
+  assert.equal(baja.statusCode, 200);
+  const { rows: [b] } = await base.superPool.query(`SELECT borrador FROM acciones WHERE borrador LIKE '%no recibir más mensajes%'`);
+  assert.ok(b, 'la baja genera alerta');
 });
 
 test('correo de la ATTRAPI: se identifica el permiso aunque venga escrito distinto', async () => {

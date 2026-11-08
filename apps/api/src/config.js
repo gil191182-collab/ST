@@ -30,5 +30,7 @@ export function cargarConfig(env = process.env) {
     marceActivo: Boolean(env.ANTHROPIC_API_KEY),
     // Ficha secreta que deben enviar WATI y el reenvío de correo a /api/entradas/*
     entradasToken: env.ENTRADAS_TOKEN ?? null,
+    // Secreto del callback de wa-mcp (npm run espacio -- callback ...)
+    waSecretoWebhook: env.WA_SECRETO_WEBHOOK ?? null,
   };
 }

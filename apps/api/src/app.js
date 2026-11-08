@@ -29,6 +29,13 @@ export class ErrorHttp extends Error {
 export function crearApp({ config, pool, marce, logger = false }) {
   const app = Fastify({ logger, trustProxy: true, bodyLimit: 2 * 1024 * 1024, maxParamLength: 1000 });
   app.register(cookie);
+  // Se guarda el cuerpo tal cual llegó, para verificar firmas (avisos de wa-mcp).
+  app.removeContentTypeParser('application/json');
+  app.addContentTypeParser('application/json', { parseAs: 'string' }, (req, cuerpo, listo) => {
+    req.cuerpoCrudo = cuerpo;
+    if (!cuerpo) return listo(null, {});
+    try { listo(null, JSON.parse(cuerpo)); } catch (e) { e.statusCode = 400; listo(e); }
+  });
   app.register(multipart, { limits: { fileSize: 50 * 1024 * 1024, files: 1 } });
 
   // ---------- Despacho por subdominio ----------

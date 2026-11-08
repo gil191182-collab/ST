@@ -31,9 +31,10 @@ export async function prepararRecordatorios(client, { hoy = hoyMexico() } = {}) 
     const plazo = e.plazo ? `\nFecha límite: ${fechaLarga(e.plazo.fecha)} (faltan ${e.plazo.dias} días).` : '';
     const borrador = `Buen día${e.contacto ? `, ${e.contacto}` : ''}. Para avanzar con ${e.tramite} de ${e.terminal} nos falta:\n${lista}${plazo}\nQuedamos atentos. Gracias.`;
     const { rows: [a] } = await client.query(
-      `INSERT INTO acciones (despacho_id, expediente_id, tipo, canal, destinatario, asunto, borrador, propuesta_por)
-       VALUES (despacho_actual(), $1, 'recordatorio', 'whatsapp', $2, $3, $4, 'sistema') RETURNING id`,
-      [e.id, e.contacto ?? 'Contacto del cliente', `Recordatorio: ${e.tramite} · ${e.cliente}`, borrador]);
+      `INSERT INTO acciones (despacho_id, expediente_id, tipo, canal, destinatario, asunto, borrador, propuesta_por, datos)
+       VALUES (despacho_actual(), $1, 'recordatorio', 'whatsapp', $2, $3, $4, 'sistema', $5) RETURNING id`,
+      [e.id, e.contacto ?? 'Contacto del cliente', `Recordatorio: ${e.tramite} · ${e.cliente}`, borrador,
+       JSON.stringify({ resumen: `Nos falta: ${delCliente.slice(0, 5).map(r => r.nombre).join('; ')}.${e.plazo ? ` La fecha límite es el ${fechaLarga(e.plazo.fecha)}.` : ''}` })]);
     creadas.push(a.id);
     if (e.plazo && e.plazo.dias <= 30) {
       await client.query(
@@ -44,6 +45,8 @@ export async function prepararRecordatorios(client, { hoy = hoyMexico() } = {}) 
   }
   return creadas;
 }
+
+const primerNombre = (n) => String(n ?? '').replace(/^(lic|ing|dr|dra|mtro|mtra|c)\.?\s+/i, '').split(/\s+/)[0] || 'cliente';
 
 /**
  * A quién se envía: el correo o teléfono escrito en "destinatario", o el del contacto
@@ -67,8 +70,12 @@ export function direccionDe(a) {
 /** Envía las acciones aprobadas por una persona. Nunca toca ingreso/firma/escrito/cobro. */
 export async function enviarAprobadas(client, canales) {
   const { rows } = await client.query(
-    `SELECT a.*, ct.telefono, ct.correo, ct.nombre AS contacto_nombre FROM acciones a
+    `SELECT a.*, ct.telefono, ct.correo, ct.nombre AS contacto_nombre, u.nombre AS consultor, tr.nombre AS tramite,
+            (SELECT nombre FROM despachos WHERE id = a.despacho_id) AS despacho
+     FROM acciones a
      LEFT JOIN expedientes e ON e.id = a.expediente_id LEFT JOIN contactos ct ON ct.id = e.contacto_id
+     LEFT JOIN usuarios u ON u.id = e.consultor_id
+     LEFT JOIN tramite_versiones v ON v.id = e.tramite_version_id LEFT JOIN tramites tr ON tr.id = v.tramite_id
      WHERE a.estado = 'aprobada' AND a.tipo = ANY($1) AND a.archivado_en IS NULL
        AND (a.programada_para IS NULL OR a.programada_para <= now())`, [ENVIABLES]);
   const resultado = [];
@@ -78,7 +85,11 @@ export async function enviarAprobadas(client, canales) {
     const r = dir.error ? { ok: false, error: dir.error }
       : a.canal === 'correo'
         ? await canales.correo({ para: dir.valor, asunto: a.asunto ?? 'Seguimiento de su trámite', texto: a.borrador })
-        : await canales.whatsapp({ telefono: dir.valor, texto: a.borrador });
+        : await canales.whatsapp({
+            telefono: dir.valor, texto: a.borrador,
+            // Para la plantilla lg_recordatorio si la ventana de 24 h está cerrada
+            variables: [primerNombre(a.contacto_nombre ?? a.destinatario), a.consultor ?? a.despacho, a.tramite ?? 'en curso', a.datos?.resumen ?? a.borrador],
+          });
     if (r.ok) {
       await client.query(`UPDATE acciones SET estado = 'enviada', ejecutada_en = now(), error = NULL WHERE id = $1`, [a.id]);
       await client.query(

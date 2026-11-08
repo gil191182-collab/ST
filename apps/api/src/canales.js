@@ -1,9 +1,13 @@
-// Envío por WhatsApp (WATI) y correo. SOLO se usan para acciones que una
+// Envío por WhatsApp (wa-mcp) y correo. SOLO se usan para acciones que una
 // persona ya aprobó. Si un canal no está configurado, no se envía nada y la
 // acción se queda "aprobada" con una nota: nunca se finge un envío.
 
 export function crearCanales(env = process.env, fetchImpl = globalThis.fetch, transporteCorreo = null) {
-  const wati = env.WATI_URL && env.WATI_TOKEN ? { url: env.WATI_URL.replace(/\/$/, ''), token: env.WATI_TOKEN } : null;
+  // WhatsApp por wa-mcp (plataforma propia, número compartido). Logistics es el sistema "lg":
+  // su llave solo manda plantillas lg_* y solo se entera de las conversaciones que abrió.
+  // WA_REAL=1 es el interruptor: sin él no se manda nada aunque haya llave.
+  const wa = env.WA_MCP_URL && env.WA_LLAVE && env.WA_REAL === '1'
+    ? { url: env.WA_MCP_URL.replace(/\/$/, ''), llave: env.WA_LLAVE, plantilla: env.WA_PLANTILLA || 'lg_recordatorio' } : null;
   const smtp = env.SMTP_HOST && env.SMTP_USUARIO && env.SMTP_CLAVE ? {
     host: env.SMTP_HOST, port: Number(env.SMTP_PUERTO ?? 465), secure: env.SMTP_SEGURO !== 'false',
     auth: { user: env.SMTP_USUARIO, pass: env.SMTP_CLAVE },
@@ -11,21 +15,44 @@ export function crearCanales(env = process.env, fetchImpl = globalThis.fetch, tr
   const remitente = env.CORREO_REMITENTE ?? env.SMTP_USUARIO;
   const correo = env.CORREO_RELAY_URL && env.CORREO_RELAY_TOKEN ? { url: env.CORREO_RELAY_URL, token: env.CORREO_RELAY_TOKEN, de: env.CORREO_REMITENTE } : null;
 
-  return {
-    configurados: { whatsapp: Boolean(wati), correo: Boolean(smtp || correo) },
+  async function llamarWa(ruta, cuerpo) {
+    const r = await fetchImpl(`${wa.url}${ruta}`, {
+      method: 'POST',
+      headers: { 'X-API-Key': wa.llave, 'Content-Type': 'application/json' },
+      body: JSON.stringify(cuerpo),
+    });
+    const datos = await r.json().catch(() => ({}));
+    return { ok: r.ok, estatus: r.status, datos };
+  }
 
-    async whatsapp({ telefono, texto }) {
-      if (!wati) return { ok: false, error: 'WhatsApp (WATI) aún no está configurado.' };
+  // Meta no acepta saltos de línea ni más de 4 espacios seguidos en una variable.
+  const limpiarVariable = (v) => String(v ?? '').replace(/\s*\n+\s*/g, ' · ').replace(/\s{4,}/g, '   ').trim().slice(0, 900) || '—';
+
+  return {
+    configurados: { whatsapp: Boolean(wa), correo: Boolean(smtp || correo) },
+
+    /**
+     * Texto libre si la ventana de 24 h está abierta; si está cerrada, la plantilla
+     * lg_recordatorio con `variables` [nombre, consultora, trámite, mensaje].
+     */
+    async whatsapp({ telefono, texto, variables }) {
+      if (!wa) return { ok: false, error: 'WhatsApp (wa-mcp) aún no está configurado.' };
       if (!telefono) return { ok: false, error: 'El contacto no tiene teléfono capturado.' };
-      const numero = telefono.replace(/\D/g, '');
-      // Mensaje de sesión de WATI (dentro de la ventana de 24 h). Fuera de la ventana
-      // WATI exige plantilla aprobada: pendiente de definir con la cuenta real.
-      const r = await fetchImpl(`${wati.url}/api/v1/sendSessionMessage/${numero}?messageText=${encodeURIComponent(texto)}`, {
-        method: 'POST', headers: { Authorization: `Bearer ${wati.token}` },
-      });
-      const cuerpo = await r.json().catch(() => ({}));
-      if (!r.ok || cuerpo.result === false) return { ok: false, error: `WATI respondió ${r.status}: ${cuerpo.message ?? cuerpo.info ?? 'sin detalle'}` };
-      return { ok: true };
+      const numero = String(telefono).replace(/\D/g, '');
+      try {
+        const t = await llamarWa('/mensajes', { telefono: numero, texto });
+        if (t.ok) return { ok: true, via: 'texto' };
+        const ventanaCerrada = t.estatus === 422 && /ventana/i.test(t.datos.error ?? '');
+        if (!ventanaCerrada) return { ok: false, error: `wa-mcp: ${t.datos.error ?? `HTTP ${t.estatus}`}` };
+        if (!variables?.length) return { ok: false, error: 'La conversación está cerrada (más de 24 h) y no hay datos para la plantilla.' };
+        const p = await llamarWa('/plantillas/enviar', {
+          telefono: numero, plantilla: wa.plantilla, categoria: 'utility', idioma: 'es_MX', variables: variables.map(limpiarVariable),
+        });
+        if (p.ok) return { ok: true, via: `plantilla ${wa.plantilla}` };
+        return { ok: false, error: `wa-mcp (plantilla): ${p.datos.error ?? `HTTP ${p.estatus}`}` };
+      } catch (e) {
+        return { ok: false, error: `No se pudo hablar con wa-mcp: ${e.message}` };
+      }
     },
 
     // El correo sale por SMTP (p. ej. Gmail con contraseña de aplicación) o por un

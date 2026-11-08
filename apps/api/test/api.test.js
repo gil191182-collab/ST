@@ -185,9 +185,14 @@ test('piloto automático: prepara recordatorio, no lo envía hasta que una perso
   const otraVez = await conDespacho(pool, ctx, (c) => prepararRecordatorios(c));
   assert.equal(otraVez.length, 0, 'uno por expediente por día');
 
+  // wa-mcp: el texto libre falla porque la ventana de 24 h está cerrada → se usa la plantilla lg_recordatorio
   const enviados = [];
-  const fetchFalso = async (url) => { enviados.push(url); return { ok: true, status: 200, json: async () => ({ result: true }) }; };
-  const canales = crearCanales({ WATI_URL: 'https://wati.ejemplo', WATI_TOKEN: 't' }, fetchFalso);
+  const fetchFalso = async (url, op) => {
+    enviados.push({ url, cuerpo: JSON.parse(op.body), llave: op.headers['X-API-Key'] });
+    if (url.endsWith('/mensajes')) return { ok: false, status: 422, json: async () => ({ error: 'La ventana de 24 h está cerrada (último mensaje del cliente hace nunca h).' }) };
+    return { ok: true, status: 200, json: async () => ({ enviado: true }) };
+  };
+  const canales = crearCanales({ WA_MCP_URL: 'https://whats.ejemplo/api/v1', WA_LLAVE: 'strateggia_llave', WA_REAL: '1' }, fetchFalso);
   await conDespacho(pool, ctx, (c) => enviarAprobadas(c, canales));
   assert.equal(enviados.length, 0, 'nada sale sin aprobación');
 
@@ -196,8 +201,19 @@ test('piloto automático: prepara recordatorio, no lo envía hasta que una perso
   const h = await entrar('mayela@capturar-correo.invalid', 'clave-segura-123');
   assert.equal((await app.inject({ method: 'POST', url: `/api/acciones/${keri.id}/aprobar`, headers: h, payload: {} })).statusCode, 200);
   await conDespacho(pool, ctx, (c) => enviarAprobadas(c, canales));
-  assert.equal(enviados.length, 1);
-  assert.match(enviados[0], /sendSessionMessage\/524490000000/);
+  assert.equal(enviados.length, 2, 'intenta texto y, con la ventana cerrada, manda la plantilla');
+  assert.equal(enviados[0].url, 'https://whats.ejemplo/api/v1/mensajes');
+  assert.equal(enviados[1].url, 'https://whats.ejemplo/api/v1/plantillas/enviar');
+  assert.equal(enviados[1].llave, 'strateggia_llave');
+  const p = enviados[1].cuerpo;
+  assert.equal(p.telefono, '524490000000');
+  assert.equal(p.plantilla, 'lg_recordatorio');
+  assert.equal(p.categoria, 'utility');
+  assert.equal(p.variables[0], 'Omar');
+  assert.equal(p.variables[1], 'Mayela Romero Pérez');
+  assert.equal(p.variables[2], 'Constancia de Inicio de Operaciones');
+  assert.match(p.variables[3], /^Nos falta: .*Pago de derechos.* La fecha límite es el 2 de diciembre de 2026\.$/);
+  assert.ok(p.variables.every(v => !v.includes('\n')), 'sin saltos de línea (Meta no los acepta)');
   const { rows: [a] } = await base.superPool.query('SELECT estado FROM acciones WHERE id = $1', [keri.id]);
   assert.equal(a.estado, 'enviada');
 });
