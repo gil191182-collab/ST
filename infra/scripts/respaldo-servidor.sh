@@ -11,7 +11,8 @@
 #     Docker que no son bases de datos (archivos subidos, certificados, etc.).
 #
 #  Todo se cifra con GPG (RESPALDO_CLAVE_GPG) y se copia fuera de IONOS con rclone
-#  (RESPALDO_DESTINO_REMOTO). Conserva: local 7 días / 2 semanas; remoto 15 días / 4 semanas.
+#  (RESPALDO_DESTINO_REMOTO). Conserva: local 7 días / 2 semanas; remoto 15 días / 4 semanas
+#  (configurable con RESPALDO_DIAS_DIARIO_REMOTO y RESPALDO_DIAS_SEMANAL_REMOTO).
 #
 #  Cron sugerido: 15 3 * * * root /opt/logistics/app/infra/scripts/respaldo-servidor.sh >> /var/log/respaldo-servidor.log 2>&1
 set -uo pipefail
@@ -87,8 +88,8 @@ log "  Total: $(du -sh "$SALIDA" | cut -f1)"
 if [[ -n "${RESPALDO_DESTINO_REMOTO:-}" ]]; then
   if rclone copy "$SALIDA" "$RESPALDO_DESTINO_REMOTO/$TIPO/$FECHA" --transfers 2 --retries 5; then
     log "  ✔ copiado a $RESPALDO_DESTINO_REMOTO/$TIPO/$FECHA"
-    rclone delete "$RESPALDO_DESTINO_REMOTO/diario" --min-age 15d 2>/dev/null || true
-    rclone delete "$RESPALDO_DESTINO_REMOTO/semanal" --min-age 29d 2>/dev/null || true
+    rclone delete "$RESPALDO_DESTINO_REMOTO/diario" --min-age "${RESPALDO_DIAS_DIARIO_REMOTO:-15}d" 2>/dev/null || true
+    rclone delete "$RESPALDO_DESTINO_REMOTO/semanal" --min-age "${RESPALDO_DIAS_SEMANAL_REMOTO:-29}d" 2>/dev/null || true
     rclone rmdirs "$RESPALDO_DESTINO_REMOTO" --leave-root 2>/dev/null || true
   else
     fallo "copia fuera de IONOS ($RESPALDO_DESTINO_REMOTO)"
