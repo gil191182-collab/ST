@@ -47,7 +47,14 @@ curl -fsS "http://127.0.0.1:${API_PUERTO_HOST:-3101}/api/salud" && echo "  ✔ A
 curl -fsS -o /dev/null "http://127.0.0.1:${WEB_PUERTO_HOST:-3100}/entrar" && echo "  ✔ Panel arriba."
 
 paso "6/6 Contraseña del director (Gil)"
-docker compose exec api node apps/api/src/definir-clave.js strateggia gil191182@gmail.com
+# La contraseña se pide aquí (read -s: no se ve ni queda en el historial) y se pasa al contenedor
+CLAVE=""
+until [[ ${#CLAVE} -ge 10 ]]; do
+  read -r -s -p "  Contraseña nueva para Logistics (mínimo 10 caracteres): " CLAVE; echo
+  [[ ${#CLAVE} -ge 10 ]] || echo "  Debe tener al menos 10 caracteres. Intente de nuevo."
+done
+docker compose exec -T -e CLAVE_NUEVA="$CLAVE" api node apps/api/src/definir-clave.js strateggia gil191182@gmail.com
+unset CLAVE
 
 echo
 echo "✔ Logistics instalado. Siguiente paso: conectar Caddy (bash infra/scripts/conectar-caddy.sh)."
