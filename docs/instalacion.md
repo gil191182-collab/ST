@@ -68,24 +68,39 @@ Para quitarlo: borrar el bloque marcado "Strateggia Logistics" del Caddyfile y
 2. **Personas → Cambiar correo** de Mayela al real → **Nuevo enlace** y enviárselo.
 3. **Clientes y permisos → Corregir domicilio** de los permisos 0056, 0058 y 0036.
 
-## 5. Respaldos diarios
+## 5. Respaldos de TODO el servidor
+
+`infra/scripts/respaldo-servidor.sh` respalda todos los sistemas (no solo Logistics):
+
+| Qué | Cuándo |
+|---|---|
+| Bases de datos de todos los contenedores PostgreSQL (solo lectura) | Diario 3:15 a.m. |
+| Configuración: Caddyfile, `.env` y docker-compose de cada sistema | Diario |
+| Documentos de Logistics | Diario |
+| Código y archivos de `/opt` + volúmenes de Docker que no son bases | Domingo |
+
+Todo se cifra con `RESPALDO_CLAVE_GPG` y se copia a Google Drive con rclone (permiso
+limitado a sus propios archivos). Se conservan 15 días de diarios y 4 semanas de semanales
+en Drive (≈7 GB); en el servidor, 7 días y 2 semanas.
+
+Configuración (una sola vez):
+
+1. En el servidor: `apt-get install -y rclone gpg`
+2. En la computadora de Gil: `winget install Rclone.Rclone` y luego
+   `rclone authorize "drive" "eyJzY29wZSI6ImRyaXZlLmZpbGUifQ=="` → copiar el bloque `{...}`.
+3. En el servidor, crear el destino con ese bloque (ver el chat de instalación) y poner en
+   `.env`: `RESPALDO_DESTINO_REMOTO=gdrive:Respaldos-Servidor`.
+4. Probar y programar:
 
 ```bash
-apt-get install -y rclone gpg
+cd /opt/logistics/app && COMPLETO=1 bash infra/scripts/respaldo-servidor.sh && bash infra/scripts/probar-restauracion.sh
 ```
-
-Configurar el destino fuera de IONOS con `rclone config`, poner su nombre en
-`RESPALDO_DESTINO_REMOTO` del `.env` y programar:
 
 ```bash
-echo '15 3 * * * root /opt/logistics/app/infra/scripts/respaldo.sh >> /var/log/logistics-respaldo.log 2>&1' > /etc/cron.d/logistics-respaldo
+echo '15 3 * * * root /opt/logistics/app/infra/scripts/respaldo-servidor.sh >> /var/log/respaldo-servidor.log 2>&1' > /etc/cron.d/respaldo-servidor
 ```
 
-Probar que se puede restaurar (no toca la base real):
-
-```bash
-cd /opt/logistics/app && bash infra/scripts/respaldo.sh && bash infra/scripts/probar-restauracion.sh
-```
+Revisar cómo salió el último: `cat /opt/respaldos/ULTIMO.txt` (debe decir `errores=0`).
 
 ## 6. Conexiones (cuando se tengan)
 
