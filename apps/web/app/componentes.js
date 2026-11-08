@@ -20,12 +20,12 @@ export function Encabezado({ despacho, subtitulo, usuario, enlaces = [], logo })
             {subtitulo && <span className="block text-xs opacity-80">{subtitulo}</span>}
           </span>
         </Link>
-        <nav className="flex flex-wrap gap-4 text-sm">
+        <nav className={`flex-wrap gap-4 text-sm ${enlaces.length > 2 ? 'hidden md:flex' : 'flex'}`}>
           {enlaces.map(e => <Link key={e.href} href={e.href} className="opacity-90 hover:opacity-100 hover:underline">{e.texto}</Link>)}
         </nav>
         <div className="ml-auto flex items-center gap-3 text-sm">
-          {usuario && <span className="opacity-90">{usuario}</span>}
-          <button onClick={salir} className="rounded-md border border-white/30 px-3 py-1 hover:bg-white/10">Salir</button>
+          {usuario && <span className="hidden opacity-90 sm:inline">{usuario}</span>}
+          <button onClick={salir} className={`rounded-md border border-white/30 px-3 py-1 hover:bg-white/10 ${enlaces.length > 2 ? 'hidden md:inline-block' : ''}`}>Salir</button>
         </div>
       </div>
     </header>
@@ -79,7 +79,60 @@ const MENU_CONSULTOR = [
 ];
 
 export function EncabezadoConsultor({ yo }) {
-  return <Encabezado despacho={yo?.despacho} subtitulo="Consultores" usuario={yo?.usuario?.nombre} enlaces={MENU_CONSULTOR} logo={yo?.logo} />;
+  return (
+    <>
+      <Encabezado despacho={yo?.despacho} subtitulo="Consultores" usuario={yo?.usuario?.nombre} enlaces={MENU_CONSULTOR} logo={yo?.logo} />
+      <BarraInferior />
+    </>
+  );
+}
+
+// Íconos simples (trazo) para la barra inferior del celular
+const ICONOS = {
+  inicio: 'M3 12l9-8 9 8M5 10v10h14V10',
+  clientes: 'M4 21V7l8-4 8 4v14M9 21v-6h6v6',
+  chat: 'M4 5h16v11H8l-4 4z',
+  mas: 'M5 12h.01M12 12h.01M19 12h.01',
+};
+function Icono({ d }) {
+  return <svg aria-hidden viewBox="0 0 24 24" className="h-6 w-6" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d={d} /></svg>;
+}
+
+/** Barra de navegación inferior, solo en celular (como en una app). */
+export function BarraInferior() {
+  const [mas, setMas] = useState(false);
+  const [ruta, setRuta] = useState('');
+  useEffect(() => { setRuta(location.pathname); }, []);
+  const activo = (href) => (href === '/' ? ruta === '/' || ruta.startsWith('/expedientes') : ruta.startsWith(href));
+  const boton = 'flex flex-1 flex-col items-center gap-0.5 py-2 text-[11px]';
+  async function salir() {
+    await api('/api/sesion', { metodo: 'DELETE' }).catch(() => {});
+    location.href = '/entrar';
+  }
+  return (
+    <>
+      {mas && (
+        <div className="fixed inset-0 z-40 bg-black/40 md:hidden" onClick={() => setMas(false)}>
+          <div className="absolute inset-x-0 bottom-0 rounded-t-2xl bg-white p-4 pb-24 shadow-xl" onClick={e => e.stopPropagation()}>
+            {[['/plantillas', 'Plantillas'], ['/personas', 'Personas'], ['/configuracion', 'Configuración']].map(([href, t]) => (
+              <Link key={href} href={href} className="block rounded-lg px-3 py-3 text-base hover:bg-slate-100">{t}</Link>
+            ))}
+            <button onClick={salir} className="mt-1 block w-full rounded-lg px-3 py-3 text-left text-base text-red-700 hover:bg-red-50">Salir</button>
+          </div>
+        </div>
+      )}
+      <nav className="barra-inferior fixed inset-x-0 bottom-0 z-50 flex border-t border-white/10 bg-marca-fondo text-marca-texto-fondo md:hidden" aria-label="Navegación">
+        {[['/', 'Seguimiento', ICONOS.inicio], ['/clientes', 'Clientes', ICONOS.clientes], ['/chat', 'Chat', ICONOS.chat]].map(([href, t, d]) => (
+          <Link key={href} href={href} className={`${boton} ${activo(href) ? 'text-marca-acento' : 'opacity-80'}`} aria-current={activo(href) ? 'page' : undefined}>
+            <Icono d={d} />{t}
+          </Link>
+        ))}
+        <button onClick={() => setMas(!mas)} className={`${boton} ${mas ? 'text-marca-acento' : 'opacity-80'}`} aria-expanded={mas}>
+          <Icono d={ICONOS.mas} />Más
+        </button>
+      </nav>
+    </>
+  );
 }
 
 export function Campo({ etiqueta, ayuda, children, className = '' }) {

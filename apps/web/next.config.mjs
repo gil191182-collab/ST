@@ -6,6 +6,13 @@ const API = process.env.API_INTERNA ?? 'http://localhost:3101';
 export default {
   output: 'standalone',
   poweredByHeader: false,
+  async headers() {
+    // El service worker nunca se guarda en caché, para que las actualizaciones lleguen de inmediato
+    return [{ source: '/sw.js', headers: [
+      { key: 'Cache-Control', value: 'no-cache, no-store, must-revalidate' },
+      { key: 'Content-Type', value: 'application/javascript; charset=utf-8' },
+    ] }];
+  },
   async rewrites() {
     return [
       { source: '/api/:ruta*', destination: `${API}/api/:ruta*` },

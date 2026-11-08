@@ -17,3 +17,12 @@ body { font-family: var(--fuente), system-ui, sans-serif; }
 .boton-accion { background: var(--color-accion); color: var(--color-texto-accion); }
 .boton-accion:hover { filter: brightness(0.92); }
 .boton-accion:focus-visible, .boton-sec:focus-visible { outline: 2px solid var(--color-acento); outline-offset: 2px; }
+
+/* En celular, las columnas de la cuadrícula no deben estirarse más que la pantalla
+   (las tablas anchas se desplazan dentro de su tarjeta, no la página completa). */
+.grid > * { min-width: 0; }
+
+/* Espacio para la barra inferior en celular, incluida la zona del gesto de inicio del iPhone */
+/* Deja espacio al final para que la barra inferior del celular no tape el contenido */
+@media (max-width: 767px) { body:has(.barra-inferior) { padding-bottom: calc(4.5rem + env(safe-area-inset-bottom)); } }
+.barra-inferior { padding-bottom: env(safe-area-inset-bottom); }

@@ -1,5 +1,6 @@
 import './globals.css';
 import { headers } from 'next/headers';
+import { RegistrarSW } from './registrar-sw';
 
 const API = process.env.API_INTERNA ?? 'http://localhost:3101';
 
@@ -26,7 +27,18 @@ async function cargarTema() {
 
 export async function generateMetadata() {
   const t = await cargarTema();
-  return { title: `${t.despacho} · Trámites ferroviarios`, description: t.lema };
+  return {
+    title: `${t.despacho} · Trámites ferroviarios`,
+    description: t.lema,
+    applicationName: t.despacho,
+    // En iPhone: abrir a pantalla completa al instalarla desde "Agregar a inicio"
+    appleWebApp: { capable: true, title: t.despacho, statusBarStyle: 'black-translucent' },
+  };
+}
+
+export async function generateViewport() {
+  const t = await cargarTema();
+  return { themeColor: t.tema?.fondo ?? '#1B2440', width: 'device-width', initialScale: 1, viewportFit: 'cover' };
 }
 
 export default async function RootLayout({ children }) {
@@ -45,6 +57,7 @@ export default async function RootLayout({ children }) {
       </head>
       <body style={estilo} className="bg-slate-100 text-slate-800 antialiased">
         {children}
+        <RegistrarSW />
       </body>
     </html>
   );
