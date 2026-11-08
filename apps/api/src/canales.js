@@ -13,6 +13,12 @@ export function crearCanales(env = process.env, fetchImpl = globalThis.fetch, tr
     auth: { user: env.SMTP_USUARIO, pass: env.SMTP_CLAVE },
   } : null;
   const remitente = env.CORREO_REMITENTE ?? env.SMTP_USUARIO;
+  // Mailrelay (la misma cuenta que usan CertifAI y VerifyPerson). MAILRELAY_REAL=1 es el interruptor.
+  const mailrelay = env.MAILRELAY_API_KEY && env.MAILRELAY_BASE_URL && env.MAILRELAY_FROM_EMAIL && env.MAILRELAY_REAL === '1' ? {
+    url: env.MAILRELAY_BASE_URL.replace(/\/$/, ''), llave: env.MAILRELAY_API_KEY,
+    de: { email: env.MAILRELAY_FROM_EMAIL, name: env.MAILRELAY_FROM_NAME || 'Strateggia Logistics' },
+  } : null;
+  const copia = (env.CORREO_COPIA ?? '').trim();
   const correo = env.CORREO_RELAY_URL && env.CORREO_RELAY_TOKEN ? { url: env.CORREO_RELAY_URL, token: env.CORREO_RELAY_TOKEN, de: env.CORREO_REMITENTE } : null;
 
   async function llamarWa(ruta, cuerpo) {
@@ -29,7 +35,7 @@ export function crearCanales(env = process.env, fetchImpl = globalThis.fetch, tr
   const limpiarVariable = (v) => String(v ?? '').replace(/\s*\n+\s*/g, ' · ').replace(/\s{4,}/g, '   ').trim().slice(0, 900) || '—';
 
   return {
-    configurados: { whatsapp: Boolean(wa), correo: Boolean(smtp || correo) },
+    configurados: { whatsapp: Boolean(wa), correo: Boolean(mailrelay || smtp || correo) },
 
     /**
      * Texto libre si la ventana de 24 h está abierta; si está cerrada, la plantilla
@@ -58,6 +64,24 @@ export function crearCanales(env = process.env, fetchImpl = globalThis.fetch, tr
     // El correo sale por SMTP (p. ej. Gmail con contraseña de aplicación) o por un
     // "relay" HTTP. Sin ninguno configurado no se envía nada.
     async correo({ para, asunto, texto }) {
+      if (mailrelay) {
+        if (!para) return { ok: false, error: 'El contacto no tiene correo capturado.' };
+        const html = String(texto).split(/\n\s*\n/).map(p => `<p>${p.replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]).replace(/\n/g, '<br>')}</p>`).join('');
+        const enviar = async (destino, tema) => {
+          const r = await fetchImpl(`${mailrelay.url}/api/v1/send_emails`, {
+            method: 'POST',
+            headers: { 'X-AUTH-TOKEN': mailrelay.llave, 'Content-Type': 'application/json', Accept: 'application/json' },
+            body: JSON.stringify({ from: mailrelay.de, to: [{ email: destino }], subject: tema, html_part: html, text_part_auto: true }),
+          });
+          if (!r.ok) throw new Error(`Mailrelay respondió ${r.status}: ${(await r.text().catch(() => '')).slice(0, 200)}`);
+        };
+        try {
+          await enviar(para, asunto);
+        } catch (e) { return { ok: false, error: e.message }; }
+        // Copia opcional de todo correo que sale (si falla, el original ya salió)
+        if (copia && copia.toLowerCase() !== String(para).toLowerCase()) await enviar(copia, `[Copia] ${asunto}`).catch(() => {});
+        return { ok: true, via: 'mailrelay' };
+      }
       if (smtp) {
         if (!para) return { ok: false, error: 'El contacto no tiene correo capturado.' };
         try {

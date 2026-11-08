@@ -57,3 +57,19 @@ test('lectura del buzón: solo lectura, registra notificaciones de la ATTRAPI y 
   const r2 = await revisarCorreo(pool, cfg, { crearCliente: clienteFalso });
   assert.equal(r2[0].duplicado, true, 'el mismo correo no se registra dos veces');
 });
+
+test('Mailrelay: misma forma que VerifyPerson y copia opcional', async () => {
+  const llamadas = [];
+  const fetchFalso = async (url, op) => { llamadas.push({ url, op, cuerpo: JSON.parse(op.body) }); return { ok: true, status: 200, text: async () => '' }; };
+  const canales = crearCanales({ MAILRELAY_BASE_URL: 'https://cuenta.ipzmarketing.com/', MAILRELAY_API_KEY: 'k', MAILRELAY_FROM_EMAIL: 'hola@strateggia.mx', MAILRELAY_REAL: '1', CORREO_COPIA: 'strateggia2014@gmail.com' }, fetchFalso);
+  const r = await canales.correo({ para: 'polizas@berkley.com.mx', asunto: 'Corrección de pólizas', texto: 'Buen día.\n\nLes pedimos <corregir> el domicilio.' });
+  assert.equal(r.ok, true);
+  assert.equal(llamadas[0].url, 'https://cuenta.ipzmarketing.com/api/v1/send_emails');
+  assert.equal(llamadas[0].op.headers['X-AUTH-TOKEN'], 'k');
+  assert.deepEqual(llamadas[0].cuerpo.to, [{ email: 'polizas@berkley.com.mx' }]);
+  assert.equal(llamadas[0].cuerpo.from.email, 'hola@strateggia.mx');
+  assert.equal(llamadas[0].cuerpo.html_part, '<p>Buen día.</p><p>Les pedimos &lt;corregir&gt; el domicilio.</p>');
+  assert.equal(llamadas[1].cuerpo.subject, '[Copia] Corrección de pólizas');
+  // Sin el interruptor no se manda nada
+  assert.equal(crearCanales({ MAILRELAY_BASE_URL: 'x', MAILRELAY_API_KEY: 'k', MAILRELAY_FROM_EMAIL: 'a@b.c' }, fetchFalso).configurados.correo, false);
+});
