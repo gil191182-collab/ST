@@ -34,6 +34,7 @@ ENV NODE_ENV=production NEXT_TELEMETRY_DISABLED=1 PORT=3100 HOSTNAME=0.0.0.0
 WORKDIR /app
 COPY --from=construir-web /app/apps/web/.next/standalone ./
 COPY --from=construir-web /app/apps/web/.next/static apps/web/.next/static
+COPY --from=construir-web /app/apps/web/public apps/web/public
 USER node
 EXPOSE 3100
 CMD ["node", "apps/web/server.js"]
