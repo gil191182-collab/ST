@@ -63,7 +63,10 @@ fi
 
 # 4. Semanal: código, archivos de /opt y volúmenes que no son bases de datos
 if [[ $SEMANAL == 1 ]]; then
-  carpetas=$(cd "$OPT" && ls -d */ 2>/dev/null | tr -d '/' | grep -vE '^(containerd|respaldos.*)$')
+  # Carpetas que no se respaldan cada semana (historial que ya no cambia). Separadas por espacio.
+  excluir=$(echo "containerd ${RESPALDO_OPT_EXCLUIR:-}" | tr ' ' '\n' | grep -v '^$' | paste -sd'|')
+  carpetas=$(cd "$OPT" && ls -d */ 2>/dev/null | tr -d '/' | grep -vE "^(${excluir}|respaldos.*)$")
+  [[ -n "${RESPALDO_OPT_EXCLUIR:-}" ]] && log "  (no se incluyen cada semana: ${RESPALDO_OPT_EXCLUIR})"
   (cd "$OPT" && tar czf "$TMP/opt-codigo-y-archivos.tar.gz" --exclude='node_modules' --exclude='.next' --exclude='.git' $carpetas 2>/dev/null) \
     && log "  ✔ código y archivos de /opt ($(du -h "$TMP/opt-codigo-y-archivos.tar.gz" | cut -f1))" || fallo "código de /opt"
   # Volúmenes de Docker que NO son de PostgreSQL (esos ya están en el paso 1)
