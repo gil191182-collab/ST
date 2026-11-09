@@ -10,6 +10,8 @@ import { listarExpedientes, pendientesDe } from './consultas.js';
 import { crearCanales } from './canales.js';
 import { configImap, leerBandeja, procesarCorreoEntrante } from './correo.js';
 import { despachoPorSubdominio } from './db.js';
+import { crearDrive, sincronizarDespacho } from './drive.js';
+import { cargarConfig } from './config.js';
 
 const ENVIABLES = ['recordatorio', 'correo', 'whatsapp'];
 
@@ -111,7 +113,7 @@ export async function revisarCorreo(pool, cfg, opciones = {}) {
   return leerBandeja(cfg, (correo) => conDespacho(pool, { despachoId: d.id, actor: 'sistema' }, (c) => procesarCorreoEntrante(c, correo)), opciones);
 }
 
-export async function ciclo(pool, { canales = crearCanales(), log = console.log, imap = configImap() } = {}) {
+export async function ciclo(pool, { canales = crearCanales(), log = console.log, imap = configImap(), drive = null, archivos = null } = {}) {
   if (imap) {
     try {
       const r = await revisarCorreo(pool, imap);
@@ -124,7 +126,10 @@ export async function ciclo(pool, { canales = crearCanales(), log = console.log,
       const cambios = await conDespacho(pool, ctx, (c) => recalcularPlazos(c));
       const propuestas = await conDespacho(pool, ctx, (c) => prepararRecordatorios(c));
       const envios = await conDespacho(pool, ctx, (c) => enviarAprobadas(c, canales));
-      log(JSON.stringify({ despachoId, plazosCambiados: cambios.length, propuestas: propuestas.length, envios: envios.length }));
+      // Carpetas de Drive: importa lo nuevo y deja la propuesta para que una persona la revise
+      const deDrive = drive && archivos ? await conDespacho(pool, ctx, (c) => sincronizarDespacho(c, drive, { ...archivos, log })) : [];
+      log(JSON.stringify({ despachoId, plazosCambiados: cambios.length, propuestas: propuestas.length, envios: envios.length,
+        drive: deDrive.reduce((s, x) => s + x.nuevos.length, 0) }));
     } catch (e) {
       log(`Error en el despacho ${despachoId}: ${e.message}`);
     }
@@ -134,7 +139,11 @@ export async function ciclo(pool, { canales = crearCanales(), log = console.log,
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
   const pool = crearPool(process.env.DATABASE_URL);
   const minutos = Number(process.env.WORKER_MINUTOS ?? 60);
-  const correr = () => ciclo(pool).catch(e => console.error(e));
+  const config = cargarConfig();
+  const drive = crearDrive();
+  const archivos = { carpetaArchivos: config.carpetaArchivos, llaveArchivos: config.llaveArchivos };
+  if (drive) console.log(`Google Drive conectado como ${drive.correo}.`);
+  const correr = () => ciclo(pool, { drive, archivos }).catch(e => console.error(e));
   correr();
   setInterval(correr, minutos * 60 * 1000);
   console.log(`Trabajador activo: cada ${minutos} minutos.`);

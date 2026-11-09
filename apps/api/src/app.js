@@ -17,6 +17,7 @@ import { rutasEscritos } from './rutas/escritos.js';
 import { rutasDespacho } from './rutas/despacho.js';
 import { rutasEntradas } from './rutas/entradas.js';
 import { rutasPublicaciones } from './rutas/publicaciones.js';
+import { rutasDrive } from './rutas/drive.js';
 
 const HORAS_SESION = 12;
 const MINUTOS_URL_ARCHIVO = 10;
@@ -26,7 +27,7 @@ export class ErrorHttp extends Error {
   constructor(estatus, mensaje) { super(mensaje); this.estatus = estatus; }
 }
 
-export function crearApp({ config, pool, marce, logger = false }) {
+export function crearApp({ config, pool, marce, drive = null, logger = false }) {
   const app = Fastify({ logger, trustProxy: true, bodyLimit: 2 * 1024 * 1024, maxParamLength: 1000 });
   app.register(cookie);
   // Se guarda el cuerpo tal cual llegó, para verificar firmas (avisos de wa-mcp).
@@ -428,8 +429,8 @@ export function crearApp({ config, pool, marce, logger = false }) {
   });
 
   // ---------- Módulos ----------
-  const h = { config, pool, marce, ErrorHttp, enDespacho, soloConsultor, soloDirector, exigirAccesoExpediente, recalcularPlazos };
-  for (const registrar of [rutasGestion, rutasUsuarios, rutasDocumentos, rutasEscritos, rutasDespacho, rutasEntradas, rutasPublicaciones]) {
+  const h = { config, pool, marce, drive, ErrorHttp, enDespacho, soloConsultor, soloDirector, exigirAccesoExpediente, recalcularPlazos };
+  for (const registrar of [rutasGestion, rutasUsuarios, rutasDocumentos, rutasEscritos, rutasDespacho, rutasEntradas, rutasPublicaciones, rutasDrive]) {
     registrar(app, h);
   }
 

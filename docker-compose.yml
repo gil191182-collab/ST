@@ -11,8 +11,11 @@ x-app: &app
   environment:
     DATABASE_URL: postgresql://logistics_app:${APP_DB_PASSWORD}@postgres:5432/logistics
     ARCHIVOS_CARPETA: /datos/archivos
+    # Llave de la cuenta de servicio de Google Drive (fuera de git, solo lectura)
+    GOOGLE_DRIVE_JSON: /app/secretos/google-drive.json
   volumes:
     - archivos:/datos/archivos
+    - ./secretos:/app/secretos:ro
   networks: [logistics]
   depends_on:
     postgres: { condition: service_healthy }

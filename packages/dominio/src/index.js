@@ -4,3 +4,4 @@ export * from './textos.js';
 export * from './tema.js';
 export * from './revision.js';
 export * from './entradas.js';
+export * from './sugerir.js';

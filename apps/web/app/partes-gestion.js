@@ -75,6 +75,7 @@ export function Ajustes({ e, alCambiar }) {
   }
   return (
     <div className="space-y-5">
+      <CarpetaDrive e={e} alCambiar={alCambiar} />
       <Tarjeta titulo="Seguimiento">
         <Formulario alEnviar={async (d) => {
           const datos = { ...d, piloto_automatico: Boolean(d.piloto_automatico) };
@@ -128,5 +129,63 @@ function HitoCobro({ c, alCambiar }) {
         </select>
       </Formulario>
     </li>
+  );
+}
+
+/** Carpeta de Google Drive del expediente: el sistema la revisa y propone; nada se aprueba solo. */
+function CarpetaDrive({ e, alCambiar }) {
+  const [estado, setEstado] = useState(null);
+  const [aviso, setAviso] = useState('');
+  const [ok, setOk] = useState('');
+  const [revisando, setRevisando] = useState(false);
+  const cargar = () => api(`/api/expedientes/${e.id}/drive`).then(setEstado).catch(err => setAviso(err.message));
+  useEffect(() => { cargar(); }, [e.id]);
+  async function revisar() {
+    setAviso(''); setOk(''); setRevisando(true);
+    try {
+      const r = await api(`/api/expedientes/${e.id}/drive/revisar`, { metodo: 'POST' });
+      const asignados = r.nuevos.filter(x => x.requisito).length;
+      setOk(r.nuevos.length
+        ? `Se importaron ${r.nuevos.length} archivo(s) nuevos; ${asignados} con requisito sugerido. Revíselos en Documentos y apruebe en el Checklist.`
+        : `Sin archivos nuevos (${r.revisados} revisados).`);
+      if (r.errores.length) setAviso(`No se pudieron importar: ${r.errores.map(x => x.archivo ?? x.error).join(', ')}.`);
+      await cargar(); await alCambiar();
+    } catch (err) { setAviso(err.message); } finally { setRevisando(false); }
+  }
+  if (!estado) return null;
+  return (
+    <Tarjeta titulo="Carpeta de Google Drive">
+      {!estado.configurado ? (
+        <p className="text-sm text-slate-600">La conexión con Google Drive todavía no está configurada en el servidor.</p>
+      ) : (
+        <div className="space-y-3 text-sm">
+          <p className="text-slate-600">
+            Pegue el enlace de la carpeta del cliente. Antes, en Drive, compártala (como <b>lector</b>) con:
+          </p>
+          <p className="break-all rounded-lg bg-slate-50 px-3 py-2 font-mono text-xs ring-1 ring-slate-200">{estado.correo}</p>
+          <Formulario textoBoton="Guardar carpeta" alEnviar={async (d) => {
+            const r = await api(`/api/expedientes/${e.id}/drive`, { metodo: 'PUT', datos: { enlace: d.enlace ?? '' } });
+            await cargar();
+            return r.drive_carpeta_id ? `Carpeta ligada${r.nombre ? `: «${r.nombre}»` : ''}.` : 'Se quitó la carpeta.';
+          }}>
+            <Campo etiqueta="Enlace de la carpeta" ayuda="Vacío = quitar la carpeta. El sistema la revisa cada hora; también puede revisarla ahora.">
+              <input name="enlace" defaultValue={estado.drive_carpeta_id ? `https://drive.google.com/drive/folders/${estado.drive_carpeta_id}` : ''} className={estiloEntrada} placeholder="https://drive.google.com/drive/folders/..." />
+            </Campo>
+          </Formulario>
+          {estado.drive_carpeta_id && (
+            <div className="flex flex-wrap items-center gap-3">
+              <button onClick={revisar} disabled={revisando} className="rounded-lg border border-slate-300 px-3 py-2 text-sm hover:bg-slate-50 disabled:opacity-60">
+                {revisando ? 'Revisando Drive…' : 'Revisar Drive ahora'}
+              </button>
+              <span className="text-xs text-slate-500">
+                {estado.importados} archivo(s) importados{estado.drive_revisado_en ? ` · última revisión ${new Date(estado.drive_revisado_en).toLocaleString('es-MX')}` : ''}
+              </span>
+            </div>
+          )}
+          <Aviso tipo="ok">{ok}</Aviso>
+        </div>
+      )}
+      <Aviso>{aviso}</Aviso>
+    </Tarjeta>
   );
 }
