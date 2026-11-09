@@ -52,7 +52,7 @@ export default function Expediente({ params }) {
           <Dato titulo="Alcance contratado" valor={e.alcance === 'completo' ? 'Trámite completo' : e.alcance} />
           <Dato titulo="Consultora" valor={e.consultor ?? '—'} />
           <Dato titulo="Contacto del cliente" valor={e.contacto ?? '—'} extra={<Etiqueta clase="bg-slate-100 text-slate-700">{ESTADOS_EXPEDIENTE[e.estado]}</Etiqueta>} />
-          <Dato titulo="Avance" valor={`${e.aprobados} de ${e.total} aprobados`} extra={<Barra valor={e.aprobados} total={e.total} />} />
+          <Dato titulo="Avance" valor={`${e.aprobados} de ${e.total} aprobados`} extra={<><Barra valor={e.aprobados} total={e.total} avance={e.con_avance} />{e.con_avance > 0 && <p className="mt-1 text-xs text-slate-500">{e.con_avance} más con avance (recibido, parcial o en revisión)</p>}</>} />
         </div>
 
         <div className="flex flex-wrap gap-1 border-b border-slate-200" role="tablist">

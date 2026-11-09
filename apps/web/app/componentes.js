@@ -50,11 +50,15 @@ export function Tarjeta({ titulo, accion, children, className = '' }) {
   );
 }
 
-export function Barra({ valor, total }) {
+/** Barra de avance: lo aprobado en color de acento y, más claro, lo que ya tiene avance (recibido, parcial, en revisión). */
+export function Barra({ valor, total, avance = 0 }) {
   const pct = total ? Math.round((valor / total) * 100) : 0;
+  const pctAvance = total ? Math.round((avance / total) * 100) : 0;
   return (
-    <div className="h-2 w-full overflow-hidden rounded-full bg-slate-200" role="progressbar" aria-valuenow={valor} aria-valuemax={total} aria-label={`${valor} de ${total}`}>
+    <div className="flex h-2 w-full overflow-hidden rounded-full bg-slate-200" role="progressbar" aria-valuenow={valor} aria-valuemax={total}
+      aria-label={`${valor} de ${total} aprobados${avance ? `, ${avance} con avance` : ''}`}>
       <div className="h-full bg-marca-acento" style={{ width: `${pct}%` }} />
+      {avance > 0 && <div className="h-full bg-marca-acento opacity-40" style={{ width: `${pctAvance}%` }} />}
     </div>
   );
 }

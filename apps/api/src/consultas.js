@@ -11,6 +11,7 @@ SELECT e.id, e.estado, e.alcance, e.siguiente_paso, e.piloto_automatico, e.abier
        ct.nombre AS contacto, u.nombre AS consultor, e.contacto_id, e.consultor_id, e.terminal_id, e.resultado,
        (SELECT count(*) FROM expediente_requisitos r WHERE r.expediente_id = e.id AND r.archivado_en IS NULL)::int AS total,
        (SELECT count(*) FROM expediente_requisitos r WHERE r.expediente_id = e.id AND r.estado = 'aprobado' AND r.archivado_en IS NULL)::int AS aprobados,
+       (SELECT count(*) FROM expediente_requisitos r WHERE r.expediente_id = e.id AND r.estado IN ('recibido','parcial','en_integracion','revision_cliente','en_revision') AND r.archivado_en IS NULL)::int AS con_avance,
        (SELECT count(*) FROM expediente_requisitos r WHERE r.expediente_id = e.id AND r.estado = 'observacion' AND r.archivado_en IS NULL)::int AS con_observacion,
        (SELECT count(*) FROM expediente_requisitos r WHERE r.expediente_id = e.id AND r.responsable IN ('cliente','ambos')
           AND r.estado IN ('pendiente','observacion','por_confirmar') AND r.archivado_en IS NULL)::int AS pendientes_cliente,
@@ -140,7 +141,7 @@ export async function portalCliente(client, { clienteId, hoy = hoyMexico() }) {
     resultado.push({
       id: d.id, tramite: d.tramite, homoclave: d.homoclave, permiso: d.permiso, servicio: d.servicio,
       terminal: d.terminal, ubicacion: d.ubicacion, consultor: d.consultor, tramite_clave: d.tramite_clave,
-      total: d.total, aprobados: d.aprobados, con_observacion: d.con_observacion, plazo: d.plazo,
+      total: d.total, aprobados: d.aprobados, con_avance: d.con_avance, con_observacion: d.con_observacion, plazo: d.plazo,
       fecha_otorgamiento: d.fecha_otorgamiento && toISO(d.fecha_otorgamiento),
       requisitos: d.requisitos.map(({ propuesta_ia, ...r }) => r),
       documentos: d.documentos.map(({ revision, referencia_autorizada, ...x }) => x),

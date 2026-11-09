@@ -105,8 +105,8 @@ function TablaExpedientes({ filas, comercial }) {
               </td>
               {!comercial && (
                 <td className="w-36 pr-3">
-                  <div className="mb-1 text-xs">{e.aprobados} de {e.total} requisitos</div>
-                  <Barra valor={e.aprobados} total={e.total} />
+                  <div className="mb-1 text-xs">{e.aprobados} de {e.total} aprobados{e.con_avance ? ` · ${e.con_avance} con avance` : ''}</div>
+                  <Barra valor={e.aprobados} total={e.total} avance={e.con_avance} />
                 </td>
               )}
               <td className="pr-3">
