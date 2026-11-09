@@ -52,6 +52,7 @@ test('Drive: importa cifrado, sugiere requisito, deja alerta, no aprueba y no du
     { id: 'sub', name: 'VISITA Y PAGO', mimeType: 'application/vnd.google-apps.folder', padre: 'raiz' },
     { id: 'f1', name: 'comprobante.txt', mimeType: 'text/plain', modifiedTime: '2026-11-08T10:00:00.000Z', size: '20', padre: 'sub', contenido: 'Pago de derechos SAT' },
     { id: 'f2', name: 'foto.jpg', mimeType: 'image/jpeg', modifiedTime: '2026-11-08T10:00:00.000Z', size: '3', padre: 'raiz', contenido: 'xyz' },
+    { id: 'f3', name: 'PML ESCANEADO.pdf', mimeType: 'application/pdf', modifiedTime: '2026-11-08T10:00:00.000Z', size: String(154 * 1024 * 1024), padre: 'raiz' },
   ];
   const { fetchFalso } = googleFalso(archivos);
   const drive = crearDrive({ credenciales: { client_email: 'logistics-drive@prueba.iam.gserviceaccount.com', private_key: privateKey.export({ type: 'pkcs8', format: 'pem' }) }, fetchImpl: fetchFalso });
@@ -61,7 +62,14 @@ test('Drive: importa cifrado, sugiere requisito, deja alerta, no aprueba y no du
   await conDespacho(pool, ctx, (c) => c.query(`UPDATE expedientes SET drive_carpeta_id = 'raiz' WHERE id = $1`, [IDS.expKeri]));
   const opciones = { carpetaArchivos: carpeta, llaveArchivos: llave };
   const r = await conDespacho(pool, ctx, (c) => sincronizarExpediente(c, drive, IDS.expKeri, opciones));
-  assert.equal(r.nuevos.length, 2, JSON.stringify(r));
+  assert.equal(r.nuevos.length, 3, JSON.stringify(r));
+  // El pesado no se descarga: queda solo el enlace a Drive
+  const pml = r.nuevos.find(x => x.nombre === 'PML ESCANEADO.pdf');
+  assert.equal(pml.soloEnlace, true);
+  assert.equal(pml.requisito, 'Estudio de Pérdida Máxima Probable');
+  const { rows: [dp] } = await base.superPool.query(`SELECT ruta_cifrada, tamano_bytes FROM documentos WHERE drive_id = 'f3'`);
+  assert.equal(dp.ruta_cifrada, null);
+  assert.equal(Number(dp.tamano_bytes), 154 * 1024 * 1024);
   const pago = r.nuevos.find(x => x.nombre.includes('comprobante'));
   assert.equal(pago.nombre, 'VISITA Y PAGO / comprobante.txt');
   assert.equal(pago.requisito, 'Pago de derechos de verificación');
@@ -73,7 +81,7 @@ test('Drive: importa cifrado, sugiere requisito, deja alerta, no aprueba y no du
   assert.equal(req.propuesta_ia.tipo, 'drive');
   const { rows: alertas } = await base.superPool.query(
     `SELECT borrador FROM acciones WHERE expediente_id = $1 AND tipo = 'alerta_interna' AND borrador LIKE '%desde Drive%'`, [IDS.expKeri]);
-  assert.equal(alertas.length, 2);
+  assert.equal(alertas.length, 3);
   const { rows: [doc] } = await base.superPool.query(`SELECT origen, ruta_cifrada, texto_extraido FROM documentos WHERE drive_id = 'f1'`);
   assert.equal(doc.origen, 'drive');
   assert.ok(doc.ruta_cifrada);

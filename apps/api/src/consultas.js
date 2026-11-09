@@ -110,7 +110,8 @@ export async function detalleExpediente(client, id, { hoy = hoyMexico() } = {}) 
               (SELECT nombre FROM usuarios u WHERE u.id = r.aprobado_por) AS aprobado_por_nombre
        FROM expediente_requisitos r WHERE expediente_id = $1 AND archivado_en IS NULL ORDER BY orden`),
     q(`SELECT id, nombre, tipo_mime, tamano_bytes, requisito_id, version, creado_en, (ruta_cifrada IS NOT NULL) AS disponible,
-              (texto_extraido IS NOT NULL) AS con_texto, revision, referencia_autorizada, origen, tipo_escrito
+              (texto_extraido IS NOT NULL) AS con_texto, revision, referencia_autorizada, origen, tipo_escrito,
+              CASE WHEN drive_id IS NOT NULL THEN 'https://drive.google.com/file/d/' || drive_id || '/view' END AS enlace_drive
        FROM documentos WHERE expediente_id = $1 AND archivado_en IS NULL ORDER BY creado_en DESC`),
     q(`SELECT id, canal, direccion, autor_tipo, autor_nombre, texto, creado_en FROM mensajes
        WHERE expediente_id = $1 AND archivado_en IS NULL ORDER BY creado_en`),

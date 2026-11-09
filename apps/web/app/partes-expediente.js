@@ -74,7 +74,9 @@ export function Documentos({ e, alCambiar, consultor = false }) {
                 {consultor && d.disponible && !d.con_texto && <span className="ml-2 text-xs text-amber-800">sin texto legible</span>}
               </span>
               <span className="flex flex-wrap gap-3 text-xs">
-                {d.disponible ? <button onClick={() => abrir(d)} className="text-marca-acento-texto underline">Ver</button> : <span className="text-slate-500">Por subir</span>}
+                {d.disponible ? <button onClick={() => abrir(d)} className="text-marca-acento-texto underline">Ver</button>
+                  : d.enlace_drive ? <a href={d.enlace_drive} target="_blank" rel="noopener noreferrer" className="text-marca-acento-texto underline" title="Archivo pesado: se abre directo en Google Drive">Abrir en Drive</a>
+                  : <span className="text-slate-500">Por subir</span>}
                 {consultor && d.disponible && <>
                   <button onClick={() => hacer(d, 'revisar')} disabled={trabajando} className="text-marca-acento-texto underline">Revisar con reglas</button>
                   <button onClick={() => hacer(d, 'revisar-con-marce')} disabled={trabajando} className="text-marca-acento-texto underline">{trabajando === d.id + 'revisar-con-marce' ? 'Marce revisando…' : 'Pre-revisión de Marce'}</button>

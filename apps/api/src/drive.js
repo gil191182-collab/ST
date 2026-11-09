@@ -131,6 +131,27 @@ export async function sincronizarExpediente(c, drive, expedienteId, { carpetaArc
   for (const f of archivos) {
     if (conocidos.has(`${f.id}|${new Date(f.modifiedTime).toISOString()}`)) continue;
     try {
+      // Archivo pesado: no se copia; se guarda solo el enlace a Drive (se abre desde ahí)
+      if (!EXPORTAR[f.mimeType] && Number(f.size ?? 0) > LIMITE_BYTES) {
+        const nombreVisible = f.ruta ? `${f.ruta} / ${f.name}` : f.name;
+        const sugerencia = sugerirRequisito({ nombreArchivo: f.name, ruta: f.ruta, requisitos });
+        const { rows: [d] } = await c.query(
+          `INSERT INTO documentos (despacho_id, expediente_id, requisito_id, nombre, tipo_mime, tamano_bytes, origen, drive_id, drive_modificado)
+           VALUES (despacho_actual(), $1, $2, $3, $4, $5, 'drive', $6, $7) ON CONFLICT DO NOTHING RETURNING id`,
+          [e.id, sugerencia?.id ?? null, nombreVisible, f.mimeType, Number(f.size), f.id, f.modifiedTime]);
+        if (!d) continue;
+        if (sugerencia) {
+          await c.query(`UPDATE expediente_requisitos SET propuesta_ia = $2 WHERE id = $1`,
+            [sugerencia.id, JSON.stringify({ tipo: 'drive', documento: nombreVisible, documento_id: d.id, sugerencia, solo_enlace: true })]);
+        }
+        const mb = Math.round(Number(f.size) / 1024 / 1024);
+        await c.query(
+          `INSERT INTO acciones (despacho_id, expediente_id, tipo, canal, destinatario, borrador, propuesta_por)
+           VALUES (despacho_actual(), $1, 'alerta_interna', 'interno', 'Consultor', $2, 'sistema')`,
+          [e.id, `«${nombreVisible}» (${mb} MB) se ligó desde Drive sin copiarlo, por su tamaño: se abre en Drive.${sugerencia ? ` Parece ser para «${sugerencia.nombre}».` : ''} La revisión automática no lo lee; revíselo a mano.`]);
+        nuevos.push({ id: d.id, nombre: nombreVisible, requisito: sugerencia?.nombre ?? null, soloEnlace: true });
+        continue;
+      }
       const { datos, mime, nombre } = await drive.descargar(f);
       const { ruta, sha256 } = await guardarArchivo({ carpeta: carpetaArchivos, despachoId: e.despacho_id, buffer: datos, llave: llaveArchivos });
       const texto = await extraerTexto(datos, { nombre, tipo: mime });
