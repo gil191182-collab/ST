@@ -8,8 +8,41 @@ import { PDFDocument, StandardFonts, rgb } from 'pdf-lib';
 import { fechaLarga, hoyMexico, revisarDocumento, construirTema } from '@logistics/dominio';
 
 export const TIPOS_ESCRITO = {
+  // Machote de Strateggia ("Escrito sugerido AVISO INICIO DE OPER"), usado con KERI en 2026.
+  // Se quitó la mención a la antigua Agencia Reguladora (regla de textos exactos).
+  solicitud_inicio_operaciones: {
+    nombre: 'Solicitud de Constancia de Inicio de Operaciones (machote Strateggia)',
+    destinatario: 'autoridad', membrete: false, firma: 'cliente',
+    asunto: 'Solicitud de verificación y Constancia de Inicio de Operaciones',
+    nota: 'Se imprime en hoja membretada del cliente. Si la póliza de RC ya cubre desastres naturales e incendio, quite el anexo 3 en el cuerpo.',
+    campos: [
+      { clave: 'escritura_poder', etiqueta: 'Escritura con la que acredita su personalidad el representante', placeholder: 'Escritura Pública No. 26,484 de fecha 21 de abril de 2016, pasada ante la fe del Notario Público No. 3 de Aguascalientes' },
+      { clave: 'autorizados', etiqueta: 'Personas autorizadas para oír y recibir notificaciones', placeholder: 'los CC. Lic. Lisette Mayela Romero Pérez y Lic. ...' },
+      { clave: 'domicilio_notificaciones', etiqueta: 'Domicilio para oír y recibir notificaciones', placeholder: 'Avenida ..., colonia ..., C.P. ...' },
+      { clave: 'superficie', etiqueta: 'Superficie de la terminal (como viene en el permiso)', placeholder: '175,311.00 m²' },
+      { clave: 'condicion_inicio', etiqueta: 'Condición del permiso que pide avisar el inicio', placeholder: 'Condición DÉCIMA' },
+      { clave: 'condicion_anexos', etiqueta: 'Condición del permiso que pide los documentos', placeholder: 'Condición DÉCIMA' },
+    ],
+    cuerpo: [
+      '{{representante}}, en mi carácter de representante legal de {{razon_social}}, personalidad que acredito con la {{escritura_poder}}, autorizando a {{autorizados}}, con domicilio en {{domicilio_notificaciones}}, para oír y recibir notificaciones, ante usted expongo lo siguiente:',
+      'La Secretaría de Infraestructura, Comunicaciones y Transportes otorgó a mi representada el Permiso {{permiso}}, de fecha {{fecha_permiso}}, para prestar el servicio auxiliar de {{servicio}}, sobre una superficie de {{superficie}}, ubicada en {{domicilio}}. En cumplimiento de la {{condicion_inicio}} del permiso, informo nuestra intención de iniciar operaciones y solicito que se realice la verificación de las instalaciones, a fin de que se constaten sus condiciones operativas y se otorgue la Constancia de Inicio de Operaciones del servicio auxiliar.',
+      'Asimismo, en cumplimiento de la {{condicion_anexos}} del permiso, anexo al presente los siguientes documentos:',
+      '1. Copia certificada del Estudio de Pérdida Máxima Probable y/o Estudio de Análisis de Riesgo de la terminal.',
+      '2. Impresión fiel de la Póliza de Seguro de Responsabilidad Civil, en la que se amparan los daños que puedan ocasionarse a terceros en sus personas, en sus bienes y a las Vías Generales de Comunicación cuando dichos daños sean originados por la prestación del servicio auxiliar de {{servicio}}, así como los daños que se originen por desastres naturales a la prestación de los servicios, vías férreas e instalaciones de la terminal, con su comprobante de pago. Se solicita su aprobación de acuerdo con el artículo 194 del Reglamento del Servicio Ferroviario.',
+      '3. Impresión fiel de la Póliza de seguro contra riesgos, particularmente desastres naturales e incendio.',
+      '4. Copia de la resolución del Registro de Tarifas.',
+      '5. Copia de la resolución del Programa de Contingencias.',
+      '6. Documento original de las Bases de Coordinación, que establecen las reglas que regirán las relaciones entre los diferentes modos de transporte, así como las disposiciones de seguridad, vigilancia y control de acceso.',
+      '7. Copia del documento que garantiza la relación comercial con el concesionario, para la recepción del servicio ferroviario.',
+      '8. Comprobante del pago de derechos relativo a la verificación por inicio de operaciones.',
+      'Manifiesto, bajo protesta de decir verdad, que la información proporcionada para la obtención de dicha constancia es verídica.',
+      'Por lo anteriormente expuesto, solicito a usted:',
+      'Primero. Tenerme por presentado en los términos de este escrito, en mi carácter de representante legal de {{razon_social}}.',
+      'Segundo. Otorgar a mi representada la Constancia de Inicio de Operaciones para la prestación del servicio auxiliar de {{servicio}}.',
+    ],
+  },
   aviso_inicio_operaciones: {
-    nombre: 'Aviso de inicio de operaciones',
+    nombre: 'Aviso de inicio de operaciones (texto corto)',
     destinatario: 'autoridad', membrete: false, firma: 'cliente',
     asunto: 'Aviso de inicio de operaciones',
     // BORRADOR: Mayela debe validar este texto contra la normativa antes de usarlo con clientes.
@@ -32,7 +65,7 @@ export const TIPOS_ESCRITO = {
 export class ErrorEscrito extends Error {}
 
 /** Arma el contenido (texto) del escrito y lo valida con las reglas del catálogo. */
-export function armarEscrito({ tipo, datos, cuerpo, asunto, lugar, fecha = hoyMexico(), destinatario, firmante, cargoFirmante }) {
+export function armarEscrito({ tipo, datos, cuerpo, asunto, lugar, fecha = hoyMexico(), destinatario, firmante, cargoFirmante, extras = {} }) {
   const t = TIPOS_ESCRITO[tipo];
   if (!t) throw new ErrorEscrito('Tipo de escrito desconocido.');
   const parrafos = (cuerpo?.length ? cuerpo : t.cuerpo);
@@ -40,7 +73,13 @@ export function armarEscrito({ tipo, datos, cuerpo, asunto, lugar, fecha = hoyMe
   const valores = {
     razon_social: datos.razon_social, permiso: datos.permiso_numero, servicio: datos.servicio?.toLowerCase(),
     domicilio: datos.domicilio_textual, representante: firmante ?? datos.representante, fecha_inicio: datos.fecha_inicio,
+    fecha_permiso: datos.fecha_otorgamiento ? fechaLarga(datos.fecha_otorgamiento) : undefined,
   };
+  // Datos que pide cada tipo de escrito (escritura del poder, autorizados...): solo los declarados.
+  for (const c of t.campos ?? []) {
+    const v = typeof extras[c.clave] === 'string' ? extras[c.clave].trim() : '';
+    if (v) valores[c.clave] = v;
+  }
   const faltan = new Set();
   const rellenar = (s) => s.replace(/\{\{(\w+)\}\}/g, (_, k) => {
     if (!valores[k]) { faltan.add(k); return `[CAPTURAR ${k}]`; }

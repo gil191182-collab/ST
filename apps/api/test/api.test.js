@@ -65,7 +65,7 @@ test('tablero: KERI primero, crítico, con el plazo de la prórroga', async () =
   assert.equal(primero.plazo.fecha, '2026-12-02');
   assert.equal(primero.plazo.dias, diasEntre(hoyMexico(), '2026-12-02'));
   assert.equal(primero.plazo.definitivo, true);
-  assert.equal(`${primero.aprobados}/${primero.total}`, '3/8');
+  assert.equal(`${primero.aprobados}/${primero.total}`, '3/14', '8 originales + 6 pasos de escrito, ingreso y visita');
   const bulk = t.expedientes.find(e => e.id === IDS.expBulkmatic);
   assert.equal(bulk.plazo.fecha, '2027-02-16', 'Bulkmatic: 180 días desde el 20 ago 2026');
   const sfm = t.expedientes.find(e => e.id === IDS.expSfm);
@@ -79,7 +79,7 @@ test('detalle KERI: plazos calculados incluyen contingencias jun 2028', async ()
   const tipos = Object.fromEntries(d.plazos.map(p => [p.tipo, p.fecha]));
   assert.equal(tipos.contingencias_actualizacion, '2028-06-12');
   assert.equal(tipos.renovacion_permiso, '2046-12-22');
-  assert.equal(d.requisitos.length, 8);
+  assert.equal(d.requisitos.length, 14);
   assert.equal(d.mensajes.length, 3);
 });
 

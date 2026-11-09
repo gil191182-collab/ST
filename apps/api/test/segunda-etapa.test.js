@@ -74,7 +74,7 @@ test('alta completa: cliente → contacto → terminal → permiso → plazos; l
   const exp = await pedir(h, 'POST', '/api/expedientes', { terminal_id: te.json.id, permiso_id: pe.json.id, tramite_clave: 'inicio_operaciones' });
   assert.equal(exp.status, 200, JSON.stringify(exp.json));
   const det = await pedir(h, 'GET', `/api/expedientes/${exp.json.id}`);
-  assert.equal(det.json.requisitos.length, 8);
+  assert.equal(det.json.requisitos.length, 21, 'versión 2 del catálogo (desde 8 nov 2026)');
   assert.equal(det.json.plazo.fecha, '2027-03-30', '1 oct 2026 + 180 días naturales');
   // Concluir sin resultado no se permite
   const conc = await pedir(h, 'PATCH', `/api/expedientes/${exp.json.id}`, { estado: 'concluido' });
@@ -162,6 +162,31 @@ test('escritos: Word y PDF con domicilio textual; acción de firma propuesta', a
   // Carta membretada del despacho
   const carta = await pedir(h, 'POST', `/api/expedientes/${IDS.expKeri}/escritos`, { tipo: 'carta_despacho', destinatario: 'Berkley México', asunto: 'Corrección de pólizas', cuerpo: ['Les pedimos corregir el domicilio.'] });
   assert.equal(carta.status, 200, JSON.stringify(carta.json));
+});
+
+test('escrito de solicitud de inicio de operaciones (machote Strateggia): pide los datos que faltan y no cita a la antigua Agencia', async () => {
+  const h = await entrar('mayela@capturar-correo.invalid');
+  const tipos = (await pedir(h, 'GET', '/api/escritos/tipos')).json;
+  const t = tipos.find(x => x.clave === 'solicitud_inicio_operaciones');
+  assert.ok(t && t.campos.length >= 5);
+  const incompleto = await pedir(h, 'POST', `/api/expedientes/${IDS.expKeri}/escritos`, { tipo: 'solicitud_inicio_operaciones', firmante: 'Omar Israel Abarca Torres' });
+  assert.equal(incompleto.status, 400);
+  assert.match(incompleto.json.mensaje, /escritura_poder/);
+  const extras = {
+    escritura_poder: 'Escritura Pública No. 26,484 de fecha 21 de abril de 2016',
+    autorizados: 'los CC. Lic. Lisette Mayela Romero Pérez y Lic. Eder Giovanni Suárez Padilla',
+    domicilio_notificaciones: 'Avenida Tecnológico 1220, colonia Villa de las Palmas, Aguascalientes, C.P. 20263',
+    superficie: '175,311.00 m²', condicion_inicio: 'Condición DÉCIMA', condicion_anexos: 'Condición DÉCIMA',
+  };
+  const r = await pedir(h, 'POST', `/api/expedientes/${IDS.expKeri}/escritos`, { tipo: 'solicitud_inicio_operaciones', firmante: 'Omar Israel Abarca Torres', extras });
+  assert.equal(r.status, 200, JSON.stringify(r.json));
+  const pdfDoc = r.json.documentos.find(d => d.nombre.endsWith('.pdf'));
+  const { url } = (await pedir(h, 'GET', `/api/documentos/${pdfDoc.id}/url`)).json;
+  const texto = (await extraerTexto((await app.inject({ url })).rawPayload, { nombre: 'x.pdf' })).replace(/\s+/g, ' ');
+  assert.match(texto, /Carretera Panamericana, Km\. 59\.8, Soledad de Abajo, Cosío, Aguascalientes/);
+  assert.match(texto, /artículo 194 del Reglamento del Servicio Ferroviario/);
+  assert.match(texto, /Escritura Pública No\. 26,484/);
+  assert.doesNotMatch(texto, /Agencia Reguladora/i);
 });
 
 test('plantilla anónima: solo de referencias autorizadas y sin datos del cliente', async () => {

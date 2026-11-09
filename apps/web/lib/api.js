@@ -30,6 +30,18 @@ export const ESTADOS_REQUISITO = {
 
 export const RESPONSABLE = { despacho: 'Despacho', cliente: 'Cliente', ambos: 'Ambos', autoridad: 'Autoridad' };
 
+/** A quién le toca un requisito, con nombres reales: "Le toca a Strateggia Logistics", "Le toca a Energéticos Keri"... */
+export function aQuienLeToca(responsable, { despacho, cliente } = {}) {
+  const d = despacho || 'el despacho';
+  const c = cliente || 'el cliente';
+  return {
+    despacho: `Le toca a ${d}`,
+    cliente: `Le toca a ${c}`,
+    ambos: `${d} prepara · ${c} entrega o firma`,
+    autoridad: 'Lo emite la autoridad',
+  }[responsable] ?? RESPONSABLE[responsable] ?? responsable;
+}
+
 // Colores de estado: semánticos (no de marca), con contraste AA sobre su fondo.
 export const COLOR_ESTADO = {
   aprobado: 'bg-emerald-100 text-emerald-800', recibido: 'bg-sky-100 text-sky-800',

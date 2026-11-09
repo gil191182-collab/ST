@@ -3,7 +3,7 @@
 // documentos, mensajes, plazos, bitácora y cobro.
 import { use, useEffect, useState, useCallback } from 'react';
 import Link from 'next/link';
-import { api, ESTADOS_EXPEDIENTE, ESTADOS_REQUISITO, RESPONSABLE, COLOR_ESTADO, COLOR_URGENCIA, fechaHora, fechaCorta } from '../../../lib/api';
+import { api, ESTADOS_EXPEDIENTE, ESTADOS_REQUISITO, aQuienLeToca, COLOR_ESTADO, COLOR_URGENCIA, fechaHora, fechaCorta } from '../../../lib/api';
 import { EncabezadoConsultor, Etiqueta, Tarjeta, Barra, Aviso, Cargando } from '../../componentes';
 import { Escritos, Ajustes } from '../../partes-gestion';
 import { ChatMarce } from '../../chat-marce';
@@ -69,7 +69,7 @@ export default function Expediente({ params }) {
             {pestana === 'Checklist' && secciones.map(s => (
               <Tarjeta key={s} titulo={s}>
                 <ul className="divide-y divide-slate-100">
-                  {e.requisitos.filter(r => (r.seccion ?? 'Requisitos') === s).map(r => <Requisito key={r.id} r={r} alCambiar={cargar} />)}
+                  {e.requisitos.filter(r => (r.seccion ?? 'Requisitos') === s).map(r => <Requisito key={r.id} r={r} alCambiar={cargar} quienes={{ despacho: yo?.despacho, cliente: e.cliente }} />)}
                 </ul>
               </Tarjeta>
             ))}
@@ -126,7 +126,7 @@ function Dato({ titulo, valor, extra }) {
   );
 }
 
-function Requisito({ r, alCambiar }) {
+function Requisito({ r, alCambiar, quienes }) {
   const [abierto, setAbierto] = useState(false);
   const [texto, setTexto] = useState('');
   const [error, setError] = useState('');
@@ -151,7 +151,7 @@ function Requisito({ r, alCambiar }) {
           {r.nota && <p className="text-xs text-slate-600">{r.nota}</p>}
           {r.aprobado_por_nombre && <p className="text-xs text-emerald-700">Aprobó {r.aprobado_por_nombre}</p>}
         </div>
-        <span className="text-xs text-slate-500">{RESPONSABLE[r.responsable]}</span>
+        <span className="text-xs text-slate-500">{aQuienLeToca(r.responsable, quienes)}</span>
         <Etiqueta clase={COLOR_ESTADO[r.estado] ?? 'bg-slate-100'}>{ESTADOS_REQUISITO[r.estado]}</Etiqueta>
         <button onClick={() => setAbierto(!abierto)} className="text-xs text-marca-acento-texto underline" aria-expanded={abierto}>{abierto ? 'Cerrar' : 'Revisar'}</button>
       </div>

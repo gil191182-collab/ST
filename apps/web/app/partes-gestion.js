@@ -6,7 +6,7 @@ import { Tarjeta, Aviso, Campo, Formulario, estiloEntrada } from './componentes'
 
 export function Escritos({ e, alCambiar }) {
   const [tipos, setTipos] = useState([]);
-  const [tipo, setTipo] = useState('aviso_inicio_operaciones');
+  const [tipo, setTipo] = useState('solicitud_inicio_operaciones');
   const [resultado, setResultado] = useState(null);
   useEffect(() => { api('/api/escritos/tipos').then(setTipos).catch(() => {}); }, []);
   const t = tipos.find(x => x.clave === tipo);
@@ -25,13 +25,19 @@ export function Escritos({ e, alCambiar }) {
         <Formulario key={tipo} textoBoton="Generar Word y PDF" alEnviar={async (d) => {
           const cuerpo = d.cuerpo ? d.cuerpo.split(/\n\s*\n/).map(x => x.trim()).filter(Boolean) : undefined;
           const { cuerpo: _, ...resto } = d;
-          const r = await api(`/api/expedientes/${e.id}/escritos`, { metodo: 'POST', datos: { tipo, ...resto, ...(cuerpo ? { cuerpo } : {}) } });
+          const extras = {};
+          for (const k of Object.keys(resto)) if (k.startsWith('extra__')) { extras[k.slice(7)] = resto[k]; delete resto[k]; }
+          const r = await api(`/api/expedientes/${e.id}/escritos`, { metodo: 'POST', datos: { tipo, ...resto, extras, ...(cuerpo ? { cuerpo } : {}) } });
           setResultado(r);
           alCambiar();
           return `Listo: ${r.documentos.map(x => x.nombre).join(' y ')}. Están en Documentos.`;
         }}>
           {t.destinatario !== 'autoridad' && <Campo etiqueta="Destinatario"><textarea name="destinatario" rows={2} className={estiloEntrada} /></Campo>}
           <Campo etiqueta="Asunto"><input name="asunto" defaultValue={t.asunto} className={estiloEntrada} /></Campo>
+          {t.nota && <p className="rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-900 ring-1 ring-amber-200">{t.nota}</p>}
+          {t.campos?.map(c => (
+            <Campo key={c.clave} etiqueta={c.etiqueta}><input name={`extra__${c.clave}`} required className={estiloEntrada} placeholder={c.placeholder} /></Campo>
+          ))}
           {tipo === 'aviso_inicio_operaciones' && <Campo etiqueta="Fecha de inicio de operaciones (como irá en el texto)"><input name="fecha_inicio" required className={estiloEntrada} placeholder="1 de diciembre de 2026" /></Campo>}
           <Campo etiqueta="Cuerpo" ayuda={t.cuerpo.length ? 'Vacío = usar el texto base (borrador por validar con Mayela). Separe párrafos con una línea en blanco. Puede usar {{domicilio}}, {{permiso}}, {{razon_social}}.' : 'Separe párrafos con una línea en blanco. Puede usar {{domicilio}}, {{permiso}}, {{razon_social}}.'}>
             <textarea name="cuerpo" rows={8} required={!t.cuerpo.length} placeholder={t.cuerpo.join('\n\n')} className={estiloEntrada} />

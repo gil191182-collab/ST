@@ -79,7 +79,8 @@ SELECT '00000000-0000-4000-8000-000000000001', t, c, d, x, '00000000-0000-4000-8
 INSERT INTO expedientes (id, despacho_id, cliente_id, terminal_id, permiso_id, tramite_version_id, alcance, estado,
                          consultor_id, contacto_id, piloto_automatico, siguiente_paso, abierto_en)
 SELECT x.id, '00000000-0000-4000-8000-000000000001', x.cli, x.ter, x.per,
-       (SELECT v.id FROM tramite_versiones v JOIN tramites t ON t.id = v.tramite_id WHERE t.clave = x.tram),
+       (SELECT v.id FROM tramite_versiones v JOIN tramites t ON t.id = v.tramite_id WHERE t.clave = x.tram
+          AND v.vigente_desde <= x.ab AND (v.vigente_hasta IS NULL OR v.vigente_hasta > x.ab)),
        x.alc, x.est, '00000000-0000-4000-8000-0000000000a2', x.con, x.piloto, x.sig, x.ab
 FROM (VALUES
  ('00000000-0000-4000-8000-000000000201'::uuid, '00000000-0000-4000-8000-0000000000c1'::uuid, '00000000-0000-4000-8000-0000000000e1'::uuid, '00000000-0000-4000-8000-0000000000f1'::uuid,

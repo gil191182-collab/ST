@@ -6,7 +6,7 @@ import { guardarArchivo, leerArchivo } from '../seguridad.js';
 export function rutasEscritos(app, { config, ErrorHttp, enDespacho, soloConsultor }) {
   app.get('/api/escritos/tipos', async (req) => {
     soloConsultor(req);
-    return Object.entries(TIPOS_ESCRITO).map(([clave, t]) => ({ clave, nombre: t.nombre, membrete: t.membrete, asunto: t.asunto, cuerpo: t.cuerpo, firma: t.firma }));
+    return Object.entries(TIPOS_ESCRITO).map(([clave, t]) => ({ clave, nombre: t.nombre, membrete: t.membrete, asunto: t.asunto, cuerpo: t.cuerpo, firma: t.firma, campos: t.campos ?? [], nota: t.nota ?? null }));
   });
 
   /** Logo del despacho (descifrado) para incrustarlo en membretes. */
@@ -28,13 +28,14 @@ export function rutasEscritos(app, { config, ErrorHttp, enDespacho, soloConsulto
       lugar: { type: 'string' }, fecha: { type: 'string', pattern: '^\\d{4}-\\d{2}-\\d{2}$' },
       destinatario: { type: 'string' }, firmante: { type: 'string' }, cargo_firmante: { type: 'string' },
       fecha_inicio: { type: 'string' }, requisito_id: { type: 'string' },
+      extras: { type: 'object', additionalProperties: { type: 'string', maxLength: 1000 } },
     } } },
   }, async (req) => {
     soloConsultor(req);
     const b = req.body;
     return enDespacho(req, async (c) => {
       const { rows: [d] } = await c.query(
-        `SELECT e.id, cl.razon_social, cl.nombre_corto, p.numero AS permiso_numero, p.servicio, p.domicilio_textual,
+        `SELECT e.id, cl.razon_social, cl.nombre_corto, p.numero AS permiso_numero, p.servicio, p.domicilio_textual, p.fecha_otorgamiento::text AS fecha_otorgamiento,
                 concat_ws(', ', t.municipio, t.estado) AS lugar, ct.nombre AS representante, u.nombre AS consultor
          FROM expedientes e JOIN clientes cl ON cl.id = e.cliente_id JOIN terminales t ON t.id = e.terminal_id
          LEFT JOIN permisos p ON p.id = e.permiso_id LEFT JOIN contactos ct ON ct.id = e.contacto_id
@@ -45,7 +46,7 @@ export function rutasEscritos(app, { config, ErrorHttp, enDespacho, soloConsulto
       try {
         armado = armarEscrito({
           tipo: b.tipo, asunto: b.asunto, cuerpo: b.cuerpo, lugar: b.lugar, fecha: b.fecha, destinatario: b.destinatario,
-          firmante: b.firmante ?? (t.firma === 'consultor' ? d.consultor : undefined), cargoFirmante: b.cargo_firmante,
+          firmante: b.firmante ?? (t.firma === 'consultor' ? d.consultor : undefined), cargoFirmante: b.cargo_firmante, extras: b.extras ?? {},
           datos: { ...d, fecha_inicio: b.fecha_inicio, despacho: req.despacho.nombre },
         });
       } catch (e) {
