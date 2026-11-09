@@ -58,7 +58,7 @@ test('tema público del despacho con contraste verificado', async () => {
 test('tablero: KERI primero, crítico, con el plazo de la prórroga', async () => {
   const h = await entrar('mayela@capturar-correo.invalid', 'clave-segura-123');
   const t = (await app.inject({ url: '/api/tablero', headers: h })).json();
-  assert.equal(t.indicadores.expedientesActivos, 3);
+  assert.equal(t.indicadores.expedientesActivos, 4, 'KERI, Bulkmatic, SFM contingencias y SFM SENER');
   assert.equal(t.indicadores.propuestasAbiertas, 2);
   const [primero] = t.expedientes;
   assert.equal(primero.cliente, 'Energéticos Keri');

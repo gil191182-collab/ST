@@ -27,7 +27,7 @@ test('aislamiento: otro despacho no ve los expedientes de Strateggia', async () 
   assert.equal(n, 0);
   const propios = await conDespacho(pool, comoMayela, async (c) =>
     (await c.query('SELECT count(*)::int AS n FROM expedientes')).rows[0].n);
-  assert.equal(propios, 5);
+  assert.equal(propios, 6);
 });
 
 test('aislamiento: sin despacho fijado no se ve nada', async () => {
