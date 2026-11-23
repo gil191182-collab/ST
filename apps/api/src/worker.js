@@ -143,7 +143,20 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
   const drive = crearDrive();
   const archivos = { carpetaArchivos: config.carpetaArchivos, llaveArchivos: config.llaveArchivos };
   if (drive) console.log(`Google Drive conectado como ${drive.correo}.`);
-  const correr = () => ciclo(pool, { drive, archivos }).catch(e => console.error(e));
+  // El ciclo completo (plazos, recordatorios, envíos) va cada WORKER_MINUTOS; el Drive se revisa más seguido.
+  const correr = () => ciclo(pool, { drive: null, archivos }).catch(e => console.error(e));
+  const minutosDrive = Number(process.env.DRIVE_MINUTOS ?? 15);
+  const revisarDrive = async () => {
+    for (const despachoId of await despachosActivos(pool)) {
+      try {
+        const r = await conDespacho(pool, { despachoId, actor: 'sistema' }, (c) => sincronizarDespacho(c, drive, { ...archivos, log: console.log }));
+        const nuevos = r.reduce((s, x) => s + x.nuevos.length, 0);
+        const errores = r.flatMap(x => x.errores.map(er => er.error));
+        if (nuevos || errores.length) console.log(JSON.stringify({ despachoId, drive: { nuevos, errores: errores.slice(0, 3) } }));
+      } catch (e) { console.log(`Drive: error en el despacho ${despachoId}: ${e.message}`); }
+    }
+  };
+  if (drive) { revisarDrive(); setInterval(revisarDrive, minutosDrive * 60 * 1000); console.log(`Drive: se revisa cada ${minutosDrive} minutos.`); }
   correr();
   setInterval(correr, minutos * 60 * 1000);
   console.log(`Trabajador activo: cada ${minutos} minutos.`);

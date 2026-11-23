@@ -144,12 +144,13 @@ export async function sincronizarExpediente(c, drive, expedienteId, { carpetaArc
           await c.query(`UPDATE expediente_requisitos SET propuesta_ia = $2 WHERE id = $1`,
             [sugerencia.id, JSON.stringify({ tipo: 'drive', documento: nombreVisible, documento_id: d.id, sugerencia, solo_enlace: true })]);
         }
+        const { cambio } = await actualizarRequisito(c, sugerencia, nombreVisible);
         const mb = Math.round(Number(f.size) / 1024 / 1024);
         await c.query(
           `INSERT INTO acciones (despacho_id, expediente_id, tipo, canal, destinatario, borrador, propuesta_por)
            VALUES (despacho_actual(), $1, 'alerta_interna', 'interno', 'Consultor', $2, 'sistema')`,
-          [e.id, `«${nombreVisible}» (${mb} MB) se ligó desde Drive sin copiarlo, por su tamaño: se abre en Drive.${sugerencia ? ` Parece ser para «${sugerencia.nombre}».` : ''} La revisión automática no lo lee; revíselo a mano.`]);
-        nuevos.push({ id: d.id, nombre: nombreVisible, requisito: sugerencia?.nombre ?? null, soloEnlace: true });
+          [e.id, `«${nombreVisible}» (${mb} MB) se ligó desde Drive sin copiarlo, por su tamaño: se abre en Drive.${sugerencia ? ` Parece ser para «${sugerencia.nombre}».` : ''}${cambio === 'recibido' ? ' El requisito pasó a «recibido».' : ''}${cambio === 'ya_aprobado' ? ' Ese requisito ya estaba aprobado: revise si la versión nueva cambia algo.' : ''} La revisión automática no lo lee; revíselo a mano.`]);
+        nuevos.push({ id: d.id, nombre: nombreVisible, requisito: sugerencia?.nombre ?? null, soloEnlace: true, cambio });
         continue;
       }
       const { datos, mime, nombre } = await drive.descargar(f);
@@ -174,13 +175,16 @@ export async function sincronizarExpediente(c, drive, expedienteId, { carpetaArc
         await c.query(`UPDATE expediente_requisitos SET propuesta_ia = $2 WHERE id = $1`,
           [sugerencia.id, JSON.stringify({ tipo: 'drive', documento: nombreVisible, documento_id: d.id, sugerencia, ...(revision ?? {}) })]);
       }
+      const { cambio } = await actualizarRequisito(c, sugerencia, nombreVisible);
+      const extra = cambio === 'recibido' ? ' El requisito pasó a «recibido».'
+        : cambio === 'ya_aprobado' ? ' Ese requisito ya estaba aprobado: revise si la versión nueva cambia algo.' : '';
       await c.query(
         `INSERT INTO acciones (despacho_id, expediente_id, tipo, canal, destinatario, borrador, propuesta_por)
          VALUES (despacho_actual(), $1, 'alerta_interna', 'interno', 'Consultor', $2, 'sistema')`,
         [e.id, sugerencia
-          ? `Llegó «${nombreVisible}» desde Drive (${e.cliente}). Parece ser para «${sugerencia.nombre}» (confianza ${sugerencia.confianza}). Revíselo y, si está bien, apruébelo.`
+          ? `Llegó «${nombreVisible}» desde Drive (${e.cliente}). Parece ser para «${sugerencia.nombre}» (confianza ${sugerencia.confianza}).${extra} Revíselo y, si está bien, apruébelo.`
           : `Llegó «${nombreVisible}» desde Drive (${e.cliente}). No se identificó el requisito: asígnelo en Documentos.`]);
-      nuevos.push({ id: d.id, nombre: nombreVisible, requisito: sugerencia?.nombre ?? null });
+      nuevos.push({ id: d.id, nombre: nombreVisible, requisito: sugerencia?.nombre ?? null, cambio });
     } catch (err) {
       errores.push({ archivo: f.name, error: err.message });
       log(`Drive: no se pudo importar «${f.name}»: ${err.message}`);
@@ -188,6 +192,26 @@ export async function sincronizarExpediente(c, drive, expedienteId, { carpetaArc
   }
   await c.query(`UPDATE expedientes SET drive_revisado_en = now() WHERE id = $1`, [e.id]);
   return { nuevos, errores, revisados: archivos.length };
+}
+
+/**
+ * Actualiza el estatus del requisito sugerido cuando la sugerencia es de confianza alta:
+ * pendiente / por elaborar → "recibido" (nunca "aprobado": eso solo lo hace una persona).
+ * Si el requisito ya estaba aprobado, no lo toca: solo avisa que llegó una versión nueva.
+ */
+async function actualizarRequisito(c, sugerencia, nombreVisible) {
+  if (!sugerencia) return { cambio: null };
+  const { rows: [r] } = await c.query(`SELECT estado FROM expediente_requisitos WHERE id = $1`, [sugerencia.id]);
+  if (!r) return { cambio: null };
+  if (r.estado === 'aprobado') return { cambio: 'ya_aprobado' };
+  if (sugerencia.confianza !== 'alta' || !['pendiente', 'por_elaborar'].includes(r.estado)) return { cambio: null };
+  const fecha = new Intl.DateTimeFormat('es-MX', { timeZone: 'America/Mexico_City', day: 'numeric', month: 'short', year: 'numeric' }).format(new Date());
+  await c.query(
+    `UPDATE expediente_requisitos SET estado = 'recibido',
+       nota = concat_ws(' · ', nullif(nota, ''), $2::text)
+     WHERE id = $1`,
+    [sugerencia.id, `Recibido desde Drive el ${fecha}: «${nombreVisible}». Falta que un consultor lo revise y apruebe.`]);
+  return { cambio: 'recibido' };
 }
 
 /** Todas las carpetas del despacho (lo usa el trabajador en segundo plano). */

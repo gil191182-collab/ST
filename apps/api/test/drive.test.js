@@ -78,6 +78,13 @@ test('Drive: importa cifrado, sugiere requisito, deja alerta, no aprueba y no du
   const { rows: [req] } = await base.superPool.query(
     `SELECT estado, propuesta_ia FROM expediente_requisitos WHERE expediente_id = $1 AND nombre = 'Pago de derechos de verificación'`, [IDS.expKeri]);
   assert.notEqual(req.estado, 'aprobado', 'nunca se aprueba solo');
+  assert.equal(req.estado, 'recibido', 'confianza alta: pendiente → recibido');
+  assert.equal(pago.cambio, 'recibido');
+  // El PML ya estaba aprobado en el piloto: no se toca, solo se avisa
+  assert.equal(pml.cambio, 'ya_aprobado');
+  const { rows: [pmlReq] } = await base.superPool.query(
+    `SELECT estado FROM expediente_requisitos WHERE expediente_id = $1 AND nombre = 'Estudio de Pérdida Máxima Probable'`, [IDS.expKeri]);
+  assert.equal(pmlReq.estado, 'aprobado');
   assert.equal(req.propuesta_ia.tipo, 'drive');
   const { rows: alertas } = await base.superPool.query(
     `SELECT borrador FROM acciones WHERE expediente_id = $1 AND tipo = 'alerta_interna' AND borrador LIKE '%desde Drive%'`, [IDS.expKeri]);
