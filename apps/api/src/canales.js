@@ -43,7 +43,7 @@ export function crearCanales(env = process.env, fetchImpl = globalThis.fetch, tr
      * Texto libre si la ventana de 24 h está abierta; si está cerrada, la plantilla
      * lg_recordatorio con `variables` [nombre, consultora, trámite, mensaje].
      */
-    async whatsapp({ telefono, texto, variables }) {
+    async whatsapp({ telefono, texto, variables, plantilla, categoria }) {
       if (!wa) return { ok: false, error: 'WhatsApp (wa-mcp) aún no está configurado.' };
       if (!telefono) return { ok: false, error: 'El contacto no tiene teléfono capturado.' };
       const numero = String(telefono).replace(/\D/g, '');
@@ -54,9 +54,9 @@ export function crearCanales(env = process.env, fetchImpl = globalThis.fetch, tr
         if (!ventanaCerrada) return { ok: false, error: `wa-mcp: ${t.datos.error ?? `HTTP ${t.estatus}`}` };
         if (!variables?.length) return { ok: false, error: 'La conversación está cerrada (más de 24 h) y no hay datos para la plantilla.' };
         const p = await llamarWa('/plantillas/enviar', {
-          telefono: numero, plantilla: wa.plantilla, categoria: wa.categoria, idioma: 'es_MX', variables: variables.map(limpiarVariable),
+          telefono: numero, plantilla: plantilla ?? wa.plantilla, categoria: categoria ?? wa.categoria, idioma: 'es_MX', variables: variables.map(limpiarVariable),
         });
-        if (p.ok) return { ok: true, via: `plantilla ${wa.plantilla}` };
+        if (p.ok) return { ok: true, via: `plantilla ${plantilla ?? wa.plantilla}` };
         return { ok: false, error: `wa-mcp (plantilla): ${p.datos.error ?? `HTTP ${p.estatus}`}` };
       } catch (e) {
         return { ok: false, error: `No se pudo hablar con wa-mcp: ${e.message}` };

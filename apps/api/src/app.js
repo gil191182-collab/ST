@@ -10,6 +10,7 @@ import { verificarClave, firmar, verificarFirma, guardarArchivo, leerArchivo } f
 import { tablero, detalleExpediente, portalCliente, listarExpedientes, pendientesDe } from './consultas.js';
 import { recalcularPlazos } from './plazos.js';
 import { extraerTexto } from './texto.js';
+import { crearCanales } from './canales.js';
 import { rutasGestion } from './rutas/gestion.js';
 import { rutasUsuarios } from './rutas/usuarios.js';
 import { rutasDocumentos } from './rutas/documentos.js';
@@ -27,7 +28,7 @@ export class ErrorHttp extends Error {
   constructor(estatus, mensaje) { super(mensaje); this.estatus = estatus; }
 }
 
-export function crearApp({ config, pool, marce, drive = null, logger = false }) {
+export function crearApp({ config, pool, marce, drive = null, canales = crearCanales(), logger = false }) {
   const app = Fastify({ logger, trustProxy: true, bodyLimit: 2 * 1024 * 1024, maxParamLength: 1000 });
   app.register(cookie);
   // Se guarda el cuerpo tal cual llegó, para verificar firmas (avisos de wa-mcp).
@@ -120,7 +121,30 @@ export function crearApp({ config, pool, marce, drive = null, logger = false }) 
     return { ok: true };
   });
 
-  app.get('/api/yo', async (req) => ({ usuario: req.usuario, despacho: req.despacho.nombre, logo: req.despacho.tema?.logo_ruta ? '/api/despacho/logo' : null }));
+  app.get('/api/yo', async (req) => {
+    const yo = { usuario: req.usuario, despacho: req.despacho.nombre, logo: req.despacho.tema?.logo_ruta ? '/api/despacho/logo' : null, avisos: { solicitudes_nuevas: 0 } };
+    if (req.usuario.rol !== 'cliente') {
+      yo.avisos.solicitudes_nuevas = await enDespacho(req, async (c) =>
+        (await c.query(`SELECT count(*)::int AS n FROM solicitudes_cambio WHERE estado = 'nueva' AND archivado_en IS NULL`)).rows[0].n);
+    }
+    return yo;
+  });
+
+  /**
+   * Aviso por WhatsApp al director (número en AVISOS_WHATSAPP del .env) cuando Marce registra
+   * una solicitud de cambio. Es un aviso interno: no se manda nada a clientes.
+   * Ventana de 24 h abierta: texto libre; cerrada: plantilla lg_aviso_interno (utilidad).
+   */
+  function avisarAlDirector(texto, req) {
+    const telefono = process.env.AVISOS_WHATSAPP;
+    if (!telefono || !canales?.configurados?.whatsapp) return;
+    const nombre = process.env.AVISOS_NOMBRE || 'Gil';
+    canales.whatsapp({
+      telefono, texto: `🔔 Strateggia Logistics: ${texto}\nRevísalo en el Chat de consultores: https://${config.dominioBase}/chat`,
+      variables: [nombre, texto], plantilla: process.env.AVISOS_PLANTILLA || 'lg_aviso_interno', categoria: 'utility',
+    }).then(r => { if (!r.ok) req.log.warn(`Aviso por WhatsApp no enviado: ${r.error}`); })
+      .catch(e => req.log.warn(`Aviso por WhatsApp no enviado: ${e.message}`));
+  }
 
   // ---------- Tablero interno ----------
   app.get('/api/tablero', async (req) => {
@@ -455,6 +479,7 @@ export function crearApp({ config, pool, marce, drive = null, logger = false }) 
       }
       return out;
     }, 'ia');
+    for (const x of solicitudes) avisarAlDirector(`Marce registró una solicitud de cambio: «${x.titulo}» (pidió ${req.usuario.nombre})`, req);
     return { respuesta: r.respuesta, propuestas, solicitudes, fuentes: r.fuentes ?? [], marceActiva: marce.activo };
   }
 

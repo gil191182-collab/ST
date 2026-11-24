@@ -21,7 +21,11 @@ export function Encabezado({ despacho, subtitulo, usuario, enlaces = [], logo })
           </span>
         </Link>
         <nav className={`flex-wrap gap-4 text-sm ${enlaces.length > 2 ? 'hidden md:flex' : 'flex'}`}>
-          {enlaces.map(e => <Link key={e.href} href={e.href} className="opacity-90 hover:opacity-100 hover:underline">{e.texto}</Link>)}
+          {enlaces.map(e => (
+            <Link key={e.href} href={e.href} className="inline-flex items-center gap-1 opacity-90 hover:opacity-100 hover:underline">
+              {e.texto}{e.aviso > 0 && <Globo n={e.aviso} />}
+            </Link>
+          ))}
         </nav>
         <div className="ml-auto flex items-center gap-3 text-sm">
           {usuario && <span className="hidden opacity-90 sm:inline">{usuario}</span>}
@@ -82,11 +86,25 @@ const MENU_CONSULTOR = [
   { href: '/configuracion', texto: 'Configuración' },
 ];
 
+/** Número rojo de avisos (por ejemplo, solicitudes de cambio nuevas). */
+function Globo({ n }) {
+  return <span className="grid h-5 min-w-5 place-items-center rounded-full bg-red-600 px-1 text-[11px] font-bold leading-none text-white" aria-label={`${n} aviso(s) nuevo(s)`}>{n > 99 ? '99+' : n}</span>;
+}
+
 export function EncabezadoConsultor({ yo }) {
+  const avisos = yo?.avisos?.solicitudes_nuevas ?? 0;
+  // Número en el ícono de la app instalada (Android y iPhone con la app en la pantalla de inicio)
+  useEffect(() => {
+    try {
+      if (avisos > 0) navigator.setAppBadge?.(avisos)?.catch?.(() => {});
+      else navigator.clearAppBadge?.()?.catch?.(() => {});
+    } catch {}
+  }, [avisos]);
+  const enlaces = MENU_CONSULTOR.map(e => (e.href === '/chat' ? { ...e, aviso: avisos } : e));
   return (
     <>
-      <Encabezado despacho={yo?.despacho} subtitulo="Consultores" usuario={yo?.usuario?.nombre} enlaces={MENU_CONSULTOR} logo={yo?.logo} />
-      <BarraInferior />
+      <Encabezado despacho={yo?.despacho} subtitulo="Consultores" usuario={yo?.usuario?.nombre} enlaces={enlaces} logo={yo?.logo} />
+      <BarraInferior avisos={avisos} />
     </>
   );
 }
@@ -103,7 +121,7 @@ function Icono({ d }) {
 }
 
 /** Barra de navegación inferior, solo en celular (como en una app). */
-export function BarraInferior() {
+export function BarraInferior({ avisos = 0 } = {}) {
   const [mas, setMas] = useState(false);
   const [ruta, setRuta] = useState('');
   useEffect(() => { setRuta(location.pathname); }, []);
@@ -128,7 +146,7 @@ export function BarraInferior() {
       <nav className="barra-inferior fixed inset-x-0 bottom-0 z-50 flex border-t border-white/10 bg-marca-fondo text-marca-texto-fondo md:hidden" aria-label="Navegación">
         {[['/', 'Seguimiento', ICONOS.inicio], ['/clientes', 'Clientes', ICONOS.clientes], ['/chat', 'Chat', ICONOS.chat]].map(([href, t, d]) => (
           <Link key={href} href={href} className={`${boton} ${activo(href) ? 'text-marca-acento' : 'opacity-80'}`} aria-current={activo(href) ? 'page' : undefined}>
-            <Icono d={d} />{t}
+            <span className="relative"><Icono d={d} />{href === '/chat' && avisos > 0 && <span className="absolute -right-2.5 -top-1.5"><Globo n={avisos} /></span>}</span>{t}
           </Link>
         ))}
         <button onClick={() => setMas(!mas)} className={`${boton} ${mas ? 'text-marca-acento' : 'opacity-80'}`} aria-expanded={mas}>

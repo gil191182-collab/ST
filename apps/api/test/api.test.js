@@ -14,7 +14,7 @@ import { ciclo, prepararRecordatorios, enviarAprobadas } from '../src/worker.js'
 import { crearCanales } from '../src/canales.js';
 import { baseDePrueba, IDS } from './ayuda.js';
 
-let base, pool, app, carpeta, marceFalsa;
+let base, pool, app, carpeta, marceFalsa, avisos;
 const H = { 'x-despacho': 'strateggia' };
 
 async function entrar(correo, clave) {
@@ -35,7 +35,10 @@ before(async () => {
     marceFalsa.ultimo = structuredClone(params); (marceFalsa.llamadas ??= []).push(marceFalsa.ultimo);
     return Array.isArray(marceFalsa.respuesta) ? marceFalsa.respuesta.shift() : marceFalsa.respuesta;
   } } } };
-  app = crearApp({ config, pool, marce: crearMarce({ modelo: 'claude-opus-5-5', activo: true, cliente: clienteFalso }) });
+  process.env.AVISOS_WHATSAPP = '522220000000';
+  avisos = [];
+  const canalesFalsos = { configurados: { whatsapp: true, correo: false }, whatsapp: async (m) => { avisos.push(m); return { ok: true }; }, correo: async () => ({ ok: false }) };
+  app = crearApp({ config, pool, canales: canalesFalsos, marce: crearMarce({ modelo: 'claude-opus-5-5', activo: true, cliente: clienteFalso }) });
   await app.ready();
   await ciclo(pool, { canales: crearCanales({}), log: () => {} }); // calcula plazos
 });
@@ -192,6 +195,16 @@ test('Marce: usa herramientas (lee el expediente, propone, pide cambios), no env
   const chat = (await app.inject({ url: '/api/chat', headers: h })).json();
   assert.ok(!chat.mensajes.some(m => /coordenadas/.test(m.texto)), 'no se mezcla con el chat del equipo');
   assert.equal(chat.solicitudes[0].titulo, 'Generar propuestas comerciales');
+  // Aviso por WhatsApp al director y número en la app
+  await new Promise(r => setImmediate(r));
+  assert.equal(avisos.length, 1);
+  assert.equal(avisos[0].telefono, '522220000000');
+  assert.match(avisos[0].texto, /Generar propuestas comerciales/);
+  assert.equal(avisos[0].plantilla, 'lg_aviso_interno');
+  const yo = (await app.inject({ url: '/api/yo', headers: h })).json();
+  assert.equal(yo.avisos.solicitudes_nuevas, 1);
+  await app.inject({ method: 'PATCH', url: `/api/solicitudes/${chat.solicitudes[0].id}`, headers: h, payload: { estado: 'en_desarrollo' } });
+  assert.equal((await app.inject({ url: '/api/yo', headers: h })).json().avisos.solicitudes_nuevas, 0);
   marceFalsa.llamadas = [];
   marceFalsa.respuesta = { model: 'claude-opus-5-5', stop_reason: 'end_turn', content: [{ type: 'text', text: 'Claro.' }] };
   await app.inject({ method: 'POST', url: '/api/marce', headers: h, payload: { pregunta: '¿Y a quién se lo mando?' } });
