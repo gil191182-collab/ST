@@ -31,7 +31,10 @@ before(async () => {
   await base.superPool.query(`UPDATE contactos SET telefono = '+52 449 000 0000' WHERE nombre LIKE 'Omar%'`);
   const config = cargarConfig({ DATABASE_URL: base.appUrl, ARCHIVOS_CARPETA: carpeta });
   marceFalsa = { respuesta: null };
-  const clienteFalso = { beta: { messages: { create: async (params) => { marceFalsa.ultimo = params; return marceFalsa.respuesta; } } } };
+  const clienteFalso = { beta: { messages: { create: async (params) => {
+    marceFalsa.ultimo = structuredClone(params); (marceFalsa.llamadas ??= []).push(marceFalsa.ultimo);
+    return Array.isArray(marceFalsa.respuesta) ? marceFalsa.respuesta.shift() : marceFalsa.respuesta;
+  } } } };
   app = crearApp({ config, pool, marce: crearMarce({ modelo: 'claude-opus-5-5', activo: true, cliente: clienteFalso }) });
   await app.ready();
   await ciclo(pool, { canales: crearCanales({}), log: () => {} }); // calcula plazos
@@ -153,27 +156,61 @@ test('revisión automática guarda propuesta y no aprueba', async () => {
   assert.equal(despues.requisitos.find(x => x.id === anexo.id).estado, 'revision_cliente');
 });
 
-test('Marce: propone, no envía; las propuestas quedan esperando aprobación', async () => {
+test('Marce: usa herramientas (lee el expediente, propone, pide cambios), no envía nada y recuerda la conversación', async () => {
   const h = await entrar('mayela@capturar-correo.invalid', 'clave-segura-123');
-  marceFalsa.respuesta = {
-    model: 'claude-opus-5-5', stop_reason: 'end_turn',
-    content: [{ type: 'text', text: JSON.stringify({
-      respuesta: 'A Bulkmatic le faltan coordenadas, línea y datos de Finanzas. ¿Le mando el recordatorio a Carlos Gómez?',
-      propuestas: [
-        { tipo: 'whatsapp', canal: 'whatsapp', destinatario: 'Lic. Carlos Gómez', asunto: '', borrador: 'Buen día...', expediente_id: IDS.expBulkmatic },
-        { tipo: 'whatsapp', canal: 'whatsapp', destinatario: 'x', asunto: '', borrador: 'x', expediente_id: '00000000-0000-0000-0000-000000000000' },
-      ],
-    }) }],
-  };
+  marceFalsa.llamadas = [];
+  marceFalsa.respuesta = [
+    { model: 'claude-opus-5-5', stop_reason: 'tool_use', content: [
+      { type: 'text', text: 'Reviso el expediente.' },
+      { type: 'tool_use', id: 't1', name: 'leer_expediente', input: { expediente_id: IDS.expBulkmatic } },
+      { type: 'tool_use', id: 't2', name: 'proponer_mensaje', input: { tipo: 'whatsapp', canal: 'whatsapp', destinatario: 'Lic. Carlos Gómez', asunto: '', borrador: 'Buen día...', expediente_id: IDS.expBulkmatic } },
+      { type: 'tool_use', id: 't3', name: 'proponer_mensaje', input: { tipo: 'whatsapp', canal: 'whatsapp', destinatario: 'x', asunto: '', borrador: 'x', expediente_id: '00000000-0000-0000-0000-000000000000' } },
+      { type: 'tool_use', id: 't4', name: 'pedir_cambio_al_sistema', input: { titulo: 'Generar propuestas comerciales', descripcion: 'Botón en el cliente que arme la propuesta en Word.', motivo: 'Ahorra horas a Mayela.' } },
+    ] },
+    { model: 'claude-opus-5-5', stop_reason: 'end_turn', content: [{ type: 'text', text: 'A Bulkmatic le faltan coordenadas, línea y datos de Finanzas. Dejé el WhatsApp para su aprobación.' }] },
+  ];
   const r = (await app.inject({ method: 'POST', url: '/api/marce', headers: h, payload: { pregunta: '¿Qué le falta a Bulkmatic para ingresar tarifas?' } })).json();
   assert.match(r.respuesta, /coordenadas/);
   assert.equal(r.propuestas.length, 1, 'se descarta la propuesta de un expediente inexistente');
-  assert.equal(r.propuestas[0].estado, 'propuesta');
-  // Lo que recibió Claude: datos del despacho y la configuración correcta
-  assert.equal(marceFalsa.ultimo.model, 'claude-opus-5-5');
-  assert.match(marceFalsa.ultimo.messages[0].content, /Bulkmatic/);
+  assert.equal(r.propuestas[0].estado, 'propuesta', 'queda esperando aprobación');
+  assert.equal(r.solicitudes.length, 1);
+  assert.equal(r.solicitudes[0].estado, 'nueva');
+  // Lo que recibió Claude: modelo, herramientas (incluida la búsqueda web) y datos del despacho
+  const [primera, segunda] = marceFalsa.llamadas;
+  assert.equal(primera.model, 'claude-opus-5-5');
+  assert.ok(primera.tools.some(t => t.type === 'web_search_20260209'));
+  assert.ok(primera.tools.some(t => t.name === 'pedir_cambio_al_sistema'));
+  assert.match(primera.messages.at(-1).content, /Bulkmatic/);
+  const resultados = segunda.messages.at(-1).content;
+  assert.match(resultados.find(x => x.tool_use_id === 't1').content, /REQUISITOS:/, 'leer_expediente devolvió el detalle');
+  assert.equal(resultados.find(x => x.tool_use_id === 't3').is_error, true);
   const { rows: [b] } = await base.superPool.query(`SELECT actor FROM bitacora WHERE tabla = 'acciones' AND registro_id = $1`, [r.propuestas[0].id]);
   assert.equal(b.actor, 'ia');
+  // La conversación queda en el canal de Marce (no en el chat del equipo) y se manda como historial
+  const hist = (await app.inject({ url: '/api/marce/historial', headers: h })).json();
+  assert.equal(hist.at(-1).autor_tipo, 'ia');
+  const chat = (await app.inject({ url: '/api/chat', headers: h })).json();
+  assert.ok(!chat.mensajes.some(m => /coordenadas/.test(m.texto)), 'no se mezcla con el chat del equipo');
+  assert.equal(chat.solicitudes[0].titulo, 'Generar propuestas comerciales');
+  marceFalsa.llamadas = [];
+  marceFalsa.respuesta = { model: 'claude-opus-5-5', stop_reason: 'end_turn', content: [{ type: 'text', text: 'Claro.' }] };
+  await app.inject({ method: 'POST', url: '/api/marce', headers: h, payload: { pregunta: '¿Y a quién se lo mando?' } });
+  assert.ok(marceFalsa.llamadas[0].messages.length >= 3, 'lleva la conversación anterior');
+});
+
+test('chat de consultores: Marce contesta solo cuando la mencionan', async () => {
+  const h = await entrar('mayela@capturar-correo.invalid', 'clave-segura-123');
+  marceFalsa.llamadas = [];
+  const sin = (await app.inject({ method: 'POST', url: '/api/chat', headers: h, payload: { texto: 'Hola equipo, ¿quién va a la junta?' } })).json();
+  assert.equal(sin.marce, undefined);
+  assert.equal(marceFalsa.llamadas.length, 0);
+  marceFalsa.respuesta = { model: 'claude-opus-5-5', stop_reason: 'end_turn', content: [{ type: 'text', text: 'Para empezar con Querétaro: Clientes y permisos → Nuevo cliente.' }] };
+  const con = (await app.inject({ method: 'POST', url: '/api/chat', headers: h, payload: { texto: '@Marce ¿cómo empiezo el proceso con Querétaro?' } })).json();
+  assert.match(con.marce.respuesta, /Nuevo cliente/);
+  assert.match(marceFalsa.llamadas[0].messages.at(-1).content, /cómo empiezo el proceso con Querétaro/);
+  assert.match(marceFalsa.llamadas[0].system, /EMPEZAR CON UN CLIENTE NUEVO/, 'Marce conoce la guía de uso');
+  const chat = (await app.inject({ url: '/api/chat', headers: h })).json();
+  assert.equal(chat.mensajes.at(-1).autor_nombre, 'Marce');
 });
 
 test('piloto automático: prepara recordatorio, no lo envía hasta que una persona aprueba', async () => {

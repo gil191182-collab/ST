@@ -1,5 +1,5 @@
 'use client';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { api } from '../lib/api';
 import { Tarjeta } from './componentes';
 
@@ -7,6 +7,12 @@ export function ChatMarce({ expedienteId, alCambiar }) {
   const [conversacion, setConversacion] = useState([]);
   const [pregunta, setPregunta] = useState('');
   const [pensando, setPensando] = useState(false);
+  // La conversación queda guardada: al volver, se ve lo que ya se habló
+  useEffect(() => {
+    api(`/api/marce/historial${expedienteId ? `?expediente_id=${expedienteId}` : ''}`)
+      .then(h => setConversacion(h.map(m => ({ quien: m.autor_tipo === 'ia' ? 'Marce' : m.autor_nombre ?? 'Usted', texto: m.texto }))))
+      .catch(() => {});
+  }, [expedienteId]);
   async function enviar(e) {
     e.preventDefault();
     if (!pregunta.trim()) return;
@@ -15,8 +21,13 @@ export function ChatMarce({ expedienteId, alCambiar }) {
     setPregunta(''); setPensando(true);
     try {
       const r = await api('/api/marce', { metodo: 'POST', datos: { pregunta: p, ...(expedienteId ? { expediente_id: expedienteId } : {}) } });
-      setConversacion(c => [...c, { quien: 'Marce', texto: r.respuesta + (r.propuestas.length ? `\n\nDejé ${r.propuestas.length} mensaje(s) en el piloto automático para su aprobación.` : '') }]);
-      if (r.propuestas.length) alCambiar?.();
+      const extras = [
+        r.fuentes?.length ? `Fuentes:\n${r.fuentes.map(f => `• ${f.titulo} — ${f.url}`).join('\n')}` : '',
+        r.propuestas?.length ? `Dejé ${r.propuestas.length} mensaje(s) en el piloto automático para su aprobación.` : '',
+        r.solicitudes?.length ? `Registré ${r.solicitudes.length} solicitud(es) de cambio al sistema (Chat de consultores → Solicitudes de cambio).` : '',
+      ].filter(Boolean).join('\n\n');
+      setConversacion(c => [...c, { quien: 'Marce', texto: r.respuesta + (extras ? `\n\n${extras}` : '') }]);
+      if (r.propuestas?.length || r.solicitudes?.length) alCambiar?.();
     } catch (err) {
       setConversacion(c => [...c, { quien: 'Marce', texto: `No pude contestar: ${err.message}` }]);
     } finally { setPensando(false); }
@@ -29,8 +40,8 @@ export function ChatMarce({ expedienteId, alCambiar }) {
             <b>{m.quien}:</b> {m.texto}
           </p>
         ))}
-        {pensando && <p className="text-slate-500">Marce está revisando los expedientes…</p>}
-        {!conversacion.length && <p className="text-slate-500">Pregúntele o pídale algo a Marce. Ej.: «¿Qué le falta a Bulkmatic para ingresar tarifas?»</p>}
+        {pensando && <p className="text-slate-500">Marce está revisando (puede buscar en internet; tarda un poco)…</p>}
+        {!conversacion.length && <p className="text-slate-500">Pregúntele o pídale algo a Marce. Ej.: «¿Qué le falta a Bulkmatic para ingresar tarifas?», «Busca en el DOF el formato vigente del programa de contingencias» o «Necesito que el sistema genere propuestas comerciales».</p>}
       </div>
       <form onSubmit={enviar} className="flex gap-2">
         <input value={pregunta} onChange={e => setPregunta(e.target.value)} placeholder="Pregúntele o pídale algo a Marce"

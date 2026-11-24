@@ -2,7 +2,7 @@
 // Producción solo con el clic de aprobación del director (Gil) en el chat (CLAUDE.md §6).
 // El script de publicación consulta la base y se niega si no hay aprobación.
 
-export function rutasPublicaciones(app, { ErrorHttp, enDespacho, soloConsultor, soloDirector }) {
+export function rutasPublicaciones(app, { ErrorHttp, enDespacho, soloConsultor, soloDirector, consultarMarce }) {
   // ---------- Chat de consultores ----------
   app.get('/api/chat', async (req) => {
     soloConsultor(req);
@@ -15,7 +15,10 @@ export function rutasPublicaciones(app, { ErrorHttp, enDespacho, soloConsultor, 
                 u.nombre AS aprobada_por_nombre
          FROM publicaciones p LEFT JOIN usuarios u ON u.id = p.aprobada_por
          WHERE p.archivado_en IS NULL ORDER BY p.creado_en DESC LIMIT 20`);
-      return { mensajes: mensajes.reverse(), publicaciones };
+      const { rows: solicitudes } = await c.query(
+        `SELECT id, titulo, descripcion, motivo, pedida_por, estado, creado_en FROM solicitudes_cambio
+         WHERE archivado_en IS NULL ORDER BY (estado IN ('nueva','en_desarrollo')) DESC, creado_en DESC LIMIT 30`);
+      return { mensajes: mensajes.reverse(), publicaciones, solicitudes };
     });
   });
 
@@ -23,10 +26,30 @@ export function rutasPublicaciones(app, { ErrorHttp, enDespacho, soloConsultor, 
     schema: { body: { type: 'object', required: ['texto'], properties: { texto: { type: 'string', minLength: 1, maxLength: 5000 } } } },
   }, async (req) => {
     soloConsultor(req);
-    return enDespacho(req, async (c) => (await c.query(
+    const guardado = await enDespacho(req, async (c) => (await c.query(
       `INSERT INTO mensajes (despacho_id, canal, direccion, autor_tipo, autor_id, autor_nombre, texto)
        VALUES (despacho_actual(), 'interno', 'interno', 'usuario', usuario_actual(), $1, $2) RETURNING id, creado_en`,
       [req.usuario.nombre, req.body.texto])).rows[0]);
+    // Si mencionan a Marce ("@Marce ..." o "Marce, ..."), ella contesta en el mismo chat
+    if (consultarMarce && /^\s*@?marce\b/i.test(req.body.texto)) {
+      const pregunta = req.body.texto.replace(/^\s*@?marce[\s,:]*/i, '').trim() || req.body.texto;
+      const r = await consultarMarce(req, { pregunta, canal: 'interno', guardarPregunta: false });
+      return { ...guardado, marce: r };
+    }
+    return guardado;
+  });
+
+  // ---------- Solicitudes de cambio (las deja Marce; una persona las lleva a desarrollo) ----------
+  app.patch('/api/solicitudes/:id', {
+    schema: { body: { type: 'object', required: ['estado'], additionalProperties: false, properties: {
+      estado: { type: 'string', enum: ['nueva', 'en_desarrollo', 'hecha', 'descartada'] } } } },
+  }, async (req) => {
+    soloConsultor(req);
+    return enDespacho(req, async (c) => {
+      const { rows } = await c.query(`UPDATE solicitudes_cambio SET estado = $2 WHERE id = $1 RETURNING id, estado`, [req.params.id, req.body.estado]);
+      if (!rows.length) throw new ErrorHttp(404, 'Solicitud no encontrada.');
+      return rows[0];
+    });
   });
 
   // ---------- Publicaciones ----------

@@ -381,27 +381,62 @@ export function crearApp({ config, pool, marce, drive = null, logger = false }) 
   });
 
   // ---------- Marce ----------
-  app.post('/api/marce', {
-    schema: { body: { type: 'object', required: ['pregunta'], properties: { pregunta: { type: 'string', minLength: 2, maxLength: 4000 }, expediente_id: { type: 'string' } } } },
-  }, async (req) => {
-    soloConsultor(req);
+  /** Texto del detalle de un expediente para Marce (herramienta leer_expediente). */
+  function expedienteEnTexto(d) {
+    const l = [
+      `${d.cliente} · ${d.terminal} · ${d.tramite}${d.homoclave ? ` (${d.homoclave})` : ''} · estado ${d.estado}`,
+      d.permiso ? `Permiso ${d.permiso} · ${d.servicio ?? ''}` : null,
+      `Alcance: ${d.alcance ?? '—'} · Siguiente paso: ${d.siguiente_paso ?? '—'}`,
+      d.plazo ? `Plazo principal: ${d.plazo.fecha} (${d.plazo.dias} días) — ${d.plazo.regla}` : null,
+      '', 'REQUISITOS:',
+      ...(d.requisitos ?? []).map(r => `- [${r.estado}] ${r.nombre} (le toca: ${r.responsable})${r.nota ? ` — ${r.nota.replace(/\n/g, ' / ')}` : ''}`),
+      '', 'DOCUMENTOS:',
+      ...((d.documentos ?? []).length ? d.documentos.map(x => `- id ${x.id}: ${x.nombre}${x.disponible ? (x.con_texto ? '' : ' (sin texto legible)') : x.enlace_drive ? ' (solo enlace en Drive)' : ' (por subir)'}`) : ['- (ninguno)']),
+      '', 'PLAZOS:', ...(d.plazos ?? []).map(p => `- ${p.fecha ?? p.fecha_limite ?? ''} ${p.descripcion ?? p.concepto ?? ''}`),
+      '', 'MENSAJES RECIENTES:', ...(d.mensajes ?? []).slice(-10).map(m => `- ${m.autor_nombre ?? m.autor_tipo} (${m.canal}): ${String(m.texto).slice(0, 300)}`),
+      '', 'COBROS:', ...(d.cobros ?? []).map(c => `- ${c.descripcion} · ${c.estatus}${c.folio_factura ? ` · ${c.folio_factura}` : ''}`),
+    ];
+    return l.filter(x => x !== null).join('\n');
+  }
+
+  /**
+   * Conversa con Marce y guarda todo: la respuesta, las propuestas (acciones "propuesta") y las
+   * solicitudes de cambio. `canal`: 'marce' (su chat) o 'interno' (cuando la mencionan en el chat del equipo).
+   */
+  async function consultarMarce(req, { pregunta, expedienteId = null, canal = 'marce', guardarPregunta = true }) {
     const expedientes = await enDespacho(req, async (c) => {
-      const lista = (await listarExpedientes(c)).filter(e => e.estado !== 'concluido' && (!req.body.expediente_id || e.id === req.body.expediente_id));
+      const lista = (await listarExpedientes(c)).filter(e => e.estado !== 'concluido' && (!expedienteId || e.id === expedienteId));
       const pend = await pendientesDe(c, lista.map(e => e.id));
       return lista.map(e => ({ ...e, pendientes: pend[e.id] ?? [] }));
     });
-    const r = await marce.preguntar({ pregunta: req.body.pregunta, expedientes, quienPregunta: req.usuario.nombre });
-    // Guardar la conversación y las propuestas (quedan esperando aprobación)
+    const historial = await enDespacho(req, async (c) => (await c.query(
+      `SELECT autor_tipo, autor_nombre, texto FROM (
+         SELECT autor_tipo, autor_nombre, texto, creado_en FROM mensajes
+         WHERE canal = $1 AND expediente_id IS NOT DISTINCT FROM $2 AND archivado_en IS NULL
+         ORDER BY creado_en DESC LIMIT 12) t ORDER BY creado_en`, [canal, expedienteId])).rows
+      .map(m => ({ rol: m.autor_tipo === 'ia' ? 'assistant' : 'user', texto: m.autor_tipo === 'ia' ? m.texto : `${m.autor_nombre ?? 'Alguien'}: ${m.texto}` })));
+    const herramientas = {
+      leerExpediente: (id) => enDespacho(req, async (c) => { const d = await detalleExpediente(c, id); return d ? expedienteEnTexto(d) : 'No encontrado.'; }),
+      leerDocumento: (id) => enDespacho(req, async (c) => {
+        const { rows: [d] } = await c.query(`SELECT nombre, texto_extraido, drive_id FROM documentos WHERE id = $1 AND archivado_en IS NULL`, [id]);
+        if (!d) return 'Documento no encontrado.';
+        if (!d.texto_extraido) return `«${d.nombre}» no tiene texto legible${d.drive_id ? ' (es un archivo pesado ligado a Drive)' : ' (¿escaneo?)'}. Hay que revisarlo a mano.`;
+        return `«${d.nombre}»:\n${d.texto_extraido.slice(0, 80_000)}`;
+      }),
+    };
+    const r = await marce.preguntar({ pregunta, expedientes, quienPregunta: req.usuario.nombre, historial, herramientas });
+    const fuentesTexto = r.fuentes?.length ? `\n\nFuentes:\n${r.fuentes.map(f => `• ${f.titulo} — ${f.url}`).join('\n')}` : '';
     await enDespacho(req, async (c) => {
-      for (const [autor, texto, tipo] of [[req.usuario.nombre, req.body.pregunta, 'usuario'], ['Marce', r.respuesta, 'ia']]) {
+      const filas = guardarPregunta ? [[req.usuario.nombre, pregunta, 'usuario'], ['Marce', r.respuesta + fuentesTexto, 'ia']] : [['Marce', r.respuesta + fuentesTexto, 'ia']];
+      for (const [autor, texto, tipo] of filas) {
         await c.query(`INSERT INTO mensajes (despacho_id, expediente_id, canal, direccion, autor_tipo, autor_id, autor_nombre, texto)
-                       VALUES (despacho_actual(), $1, 'interno', 'interno', $2, $3, $4, $5)`,
-          [req.body.expediente_id ?? null, tipo, tipo === 'usuario' ? req.usuario.id : null, autor, texto]);
+                       VALUES (despacho_actual(), $1, $2, 'interno', $3, $4, $5, $6)`,
+          [expedienteId, canal, tipo, tipo === 'usuario' ? req.usuario.id : null, autor, texto]);
       }
     });
     const propuestas = await enDespacho(req, async (c) => {
       const ids = [];
-      for (const p of r.propuestas) {
+      for (const p of r.propuestas ?? []) {
         const { rows: [a] } = await c.query(
           `INSERT INTO acciones (despacho_id, expediente_id, tipo, canal, destinatario, asunto, borrador, propuesta_por)
            VALUES (despacho_actual(), $1, $2, $3, $4, $5, $6, 'ia') RETURNING id, tipo, canal, destinatario, borrador, estado`,
@@ -410,7 +445,34 @@ export function crearApp({ config, pool, marce, drive = null, logger = false }) 
       }
       return ids;
     }, 'ia');
-    return { respuesta: r.respuesta, propuestas, marceActiva: marce.activo };
+    const solicitudes = await enDespacho(req, async (c) => {
+      const out = [];
+      for (const s of r.solicitudes ?? []) {
+        const { rows: [x] } = await c.query(
+          `INSERT INTO solicitudes_cambio (despacho_id, titulo, descripcion, motivo, pedida_por)
+           VALUES (despacho_actual(), $1, $2, $3, $4) RETURNING id, titulo, estado`, [s.titulo, s.descripcion, s.motivo, req.usuario.nombre]);
+        out.push(x);
+      }
+      return out;
+    }, 'ia');
+    return { respuesta: r.respuesta, propuestas, solicitudes, fuentes: r.fuentes ?? [], marceActiva: marce.activo };
+  }
+
+  app.post('/api/marce', {
+    schema: { body: { type: 'object', required: ['pregunta'], properties: { pregunta: { type: 'string', minLength: 2, maxLength: 4000 }, expediente_id: { type: 'string' } } } },
+  }, async (req) => {
+    soloConsultor(req);
+    return consultarMarce(req, { pregunta: req.body.pregunta, expedienteId: req.body.expediente_id ?? null });
+  });
+
+  // Conversación guardada con Marce (para que se vea al volver a la pantalla)
+  app.get('/api/marce/historial', async (req) => {
+    soloConsultor(req);
+    const exp = req.query.expediente_id || null;
+    return enDespacho(req, async (c) => (await c.query(
+      `SELECT autor_tipo, autor_nombre, texto, creado_en FROM (
+         SELECT * FROM mensajes WHERE canal = 'marce' AND expediente_id IS NOT DISTINCT FROM $1 AND archivado_en IS NULL
+         ORDER BY creado_en DESC LIMIT 30) t ORDER BY creado_en`, [exp])).rows);
   });
 
   // ---------- Portal del cliente ----------
@@ -445,7 +507,7 @@ export function crearApp({ config, pool, marce, drive = null, logger = false }) 
   });
 
   // ---------- Módulos ----------
-  const h = { config, pool, marce, drive, ErrorHttp, enDespacho, soloConsultor, soloDirector, exigirAccesoExpediente, recalcularPlazos };
+  const h = { config, pool, marce, drive, consultarMarce, ErrorHttp, enDespacho, soloConsultor, soloDirector, exigirAccesoExpediente, recalcularPlazos };
   for (const registrar of [rutasGestion, rutasUsuarios, rutasDocumentos, rutasEscritos, rutasDespacho, rutasEntradas, rutasPublicaciones, rutasDrive]) {
     registrar(app, h);
   }

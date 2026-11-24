@@ -14,13 +14,15 @@ export default function Chat() {
   const { yo, datos, error, cargar } = usarDatos('/api/chat');
   const [texto, setTexto] = useState('');
   const [aviso, setAviso] = useState('');
+  const [enviando, setEnviando] = useState(false);
   if (!datos) return error ? <Aviso>{error}</Aviso> : <Cargando />;
   const esDirector = yo?.usuario?.rol === 'director';
 
   async function enviar(e) {
     e.preventDefault();
     if (!texto.trim()) return;
-    try { await api('/api/chat', { metodo: 'POST', datos: { texto } }); setTexto(''); await cargar(); } catch (err) { setAviso(err.message); }
+    setEnviando(true);
+    try { await api('/api/chat', { metodo: 'POST', datos: { texto } }); setTexto(''); await cargar(); } catch (err) { setAviso(err.message); } finally { setEnviando(false); }
   }
   async function decidir(p, que) {
     const nota = que === 'rechazar' ? prompt('¿Por qué se rechaza? (opcional)') ?? '' : '';
@@ -45,9 +47,10 @@ export default function Chat() {
               {!datos.mensajes.length && <li className="text-slate-500">Sin mensajes todavía.</li>}
             </ul>
             <form onSubmit={enviar} className="flex gap-2">
-              <input value={texto} onChange={e => setTexto(e.target.value)} placeholder="Escriba al equipo…" className={`${estiloEntrada} flex-1`} aria-label="Mensaje" />
-              <button className="boton-accion rounded-lg px-4 py-2 text-sm font-medium">Enviar</button>
+              <input value={texto} onChange={e => setTexto(e.target.value)} placeholder="Escriba al equipo… (para preguntarle a Marce aquí, empiece con «@Marce»)" className={`${estiloEntrada} flex-1`} aria-label="Mensaje" />
+              <button disabled={enviando} className="boton-accion rounded-lg px-4 py-2 text-sm font-medium disabled:opacity-60">{enviando ? (/^\s*@?marce\b/i.test(texto) ? 'Marce está pensando…' : 'Enviando…') : 'Enviar'}</button>
             </form>
+            <p className="mt-1 text-xs text-slate-500">Este chat es entre personas del equipo. Marce contesta aquí solo si la menciona; también puede usar «Chat con Marce».</p>
           </Tarjeta>
           <div className="space-y-5">
             <Tarjeta titulo="Publicaciones">
@@ -78,10 +81,47 @@ export default function Chat() {
                 </Formulario>
               </details>
             </Tarjeta>
+            <Solicitudes lista={datos.solicitudes ?? []} alCambiar={cargar} setAviso={setAviso} />
             <ChatMarce alCambiar={cargar} />
           </div>
         </div>
       </main>
     </>
+  );
+}
+
+const ESTADO_SOL = { nueva: 'bg-amber-100 text-amber-900', en_desarrollo: 'bg-sky-100 text-sky-800', hecha: 'bg-emerald-100 text-emerald-800', descartada: 'bg-slate-200 text-slate-700' };
+const NOMBRE_SOL = { nueva: 'Nueva', en_desarrollo: 'En desarrollo', hecha: 'Hecha', descartada: 'Descartada' };
+
+/** Cambios al sistema que pidió el equipo a través de Marce, para llevarlos a desarrollo (Claude Code). */
+function Solicitudes({ lista, alCambiar, setAviso }) {
+  const [copiada, setCopiada] = useState(null);
+  async function copiar(s) {
+    const texto = `Solicitud de cambio para Strateggia Logistics (pedida por ${s.pedida_por}, vía Marce)\n\n${s.titulo}\n\nQué hacer:\n${s.descripcion}\n\nPor qué:\n${s.motivo ?? '—'}`;
+    try { await navigator.clipboard.writeText(texto); setCopiada(s.id); setTimeout(() => setCopiada(null), 2500); } catch { setAviso('No se pudo copiar; seleccione el texto a mano.'); }
+  }
+  async function estado(s, e) {
+    try { await api(`/api/solicitudes/${s.id}`, { metodo: 'PATCH', datos: { estado: e } }); await alCambiar(); } catch (err) { setAviso(err.message); }
+  }
+  return (
+    <Tarjeta titulo="Solicitudes de cambio al sistema">
+      <p className="mb-2 text-xs text-slate-500">Las deja Marce cuando alguien pide una función o reporta un error. Cópiela y llévela a Claude Code.</p>
+      <ul className="space-y-3 text-sm">
+        {lista.map(s => (
+          <li key={s.id} className="rounded-lg border border-slate-200 p-3">
+            <div className="flex items-start justify-between gap-2"><b>{s.titulo}</b><Etiqueta clase={ESTADO_SOL[s.estado]}>{NOMBRE_SOL[s.estado]}</Etiqueta></div>
+            <p className="text-xs text-slate-500">Pidió {s.pedida_por} · {fechaHora(s.creado_en)}</p>
+            <p className="mt-1 whitespace-pre-line text-xs">{s.descripcion}</p>
+            <div className="mt-2 flex flex-wrap gap-2">
+              <button onClick={() => copiar(s)} className="boton-accion rounded-md px-3 py-1.5 text-xs font-medium">{copiada === s.id ? '¡Copiada!' : 'Copiar para Claude Code'}</button>
+              {s.estado === 'nueva' && <button onClick={() => estado(s, 'en_desarrollo')} className="rounded-md px-3 py-1.5 text-xs ring-1 ring-slate-300">En desarrollo</button>}
+              {['nueva', 'en_desarrollo'].includes(s.estado) && <button onClick={() => estado(s, 'hecha')} className="rounded-md px-3 py-1.5 text-xs ring-1 ring-slate-300">Hecha</button>}
+              {s.estado === 'nueva' && <button onClick={() => estado(s, 'descartada')} className="rounded-md px-3 py-1.5 text-xs ring-1 ring-slate-300">Descartar</button>}
+            </div>
+          </li>
+        ))}
+        {!lista.length && <li className="text-slate-500">Sin solicitudes. Pídale a Marce: «Marce, necesito que el sistema…».</li>}
+      </ul>
+    </Tarjeta>
   );
 }

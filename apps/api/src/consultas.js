@@ -114,7 +114,7 @@ export async function detalleExpediente(client, id, { hoy = hoyMexico() } = {}) 
               CASE WHEN drive_id IS NOT NULL THEN 'https://drive.google.com/file/d/' || drive_id || '/view' END AS enlace_drive
        FROM documentos WHERE expediente_id = $1 AND archivado_en IS NULL ORDER BY creado_en DESC`),
     q(`SELECT id, canal, direccion, autor_tipo, autor_nombre, texto, creado_en FROM mensajes
-       WHERE expediente_id = $1 AND archivado_en IS NULL ORDER BY creado_en`),
+       WHERE expediente_id = $1 AND canal <> 'marce' AND archivado_en IS NULL ORDER BY creado_en`),
     q(`SELECT p.tipo, p.fecha, p.descripcion, p.regla, p.definitivo FROM plazos p
        WHERE p.archivado_en IS NULL AND (p.expediente_id = $1 OR p.permiso_id = (SELECT permiso_id FROM expedientes WHERE id = $1))
        ORDER BY p.fecha`),
