@@ -199,6 +199,22 @@ export function crearApp({ config, pool, marce, drive = null, logger = false }) 
     });
   });
 
+  // Comentario del consultor: se AGREGA a la nota con nombre y fecha (no reemplaza lo anterior).
+  app.post('/api/requisitos/:id/comentario', {
+    schema: { body: { type: 'object', required: ['texto'], additionalProperties: false, properties: { texto: { type: 'string', minLength: 1, maxLength: 4000 } } } },
+  }, async (req) => {
+    soloConsultor(req);
+    const fecha = new Intl.DateTimeFormat('es-MX', { timeZone: 'America/Mexico_City', day: 'numeric', month: 'short', year: 'numeric' }).format(new Date());
+    const linea = `${req.body.texto.trim()} (${req.usuario.nombre}, ${fecha})`;
+    return enDespacho(req, async (c) => {
+      const { rows } = await c.query(
+        `UPDATE expediente_requisitos SET nota = concat_ws(E'\n', nullif(nota, ''), $2::text) WHERE id = $1 RETURNING id, nota`,
+        [req.params.id, linea]);
+      if (!rows.length) throw new ErrorHttp(404, 'Requisito no encontrado.');
+      return rows[0];
+    });
+  });
+
   // Aprobar: SOLO una persona consultora; la base lo verifica otra vez.
   app.post('/api/requisitos/:id/aprobar', async (req) => {
     soloConsultor(req);

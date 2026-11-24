@@ -129,11 +129,21 @@ function Dato({ titulo, valor, extra }) {
 function Requisito({ r, alCambiar, quienes }) {
   const [abierto, setAbierto] = useState(false);
   const [texto, setTexto] = useState('');
+  const [comentario, setComentario] = useState('');
+  const [ok, setOk] = useState('');
   const [error, setError] = useState('');
+  async function guardarComentario() {
+    setError(''); setOk('');
+    try { await api(`/api/requisitos/${r.id}/comentario`, { metodo: 'POST', datos: { texto: comentario } }); setComentario(''); setOk('Comentario guardado.'); alCambiar(); } catch (e) { setError(e.message); }
+  }
   const revision = r.propuesta_ia?.resultados;
   async function aprobar() {
     setError('');
-    try { await api(`/api/requisitos/${r.id}/aprobar`, { metodo: 'POST', datos: {} }); alCambiar(); } catch (e) { setError(e.message); }
+    try {
+      // Si hay un comentario escrito, se guarda antes de aprobar para no perderlo
+      if (comentario.trim()) { await api(`/api/requisitos/${r.id}/comentario`, { metodo: 'POST', datos: { texto: comentario } }); setComentario(''); }
+      await api(`/api/requisitos/${r.id}/aprobar`, { metodo: 'POST', datos: {} }); alCambiar();
+    } catch (e) { setError(e.message); }
   }
   async function cambiarEstado(estado) {
     setError('');
@@ -148,7 +158,7 @@ function Requisito({ r, alCambiar, quienes }) {
       <div className="flex flex-wrap items-start gap-3">
         <div className="min-w-0 flex-1">
           <p className="font-medium text-slate-900">{r.nombre}</p>
-          {r.nota && <p className="text-xs text-slate-600">{r.nota}</p>}
+          {r.nota && <p className="whitespace-pre-line text-xs text-slate-600">{r.nota}</p>}
           {r.aprobado_por_nombre && <p className="text-xs text-emerald-700">Aprobó {r.aprobado_por_nombre}</p>}
         </div>
         <span className="text-xs text-slate-500">{aQuienLeToca(r.responsable, quienes)}</span>
@@ -164,7 +174,13 @@ function Requisito({ r, alCambiar, quienes }) {
       {abierto && (
         <div className="mt-3 space-y-2 rounded-lg border border-slate-200 p-3">
           <Aviso>{error}</Aviso>
-          <div className="flex flex-wrap gap-2">
+          <Aviso tipo="ok">{ok}</Aviso>
+          <label className="block text-xs">
+            <span className="mb-1 block font-medium text-slate-700">Comentarios (se guardan con su nombre y la fecha)</span>
+            <textarea value={comentario} onChange={ev => setComentario(ev.target.value)} rows={3} className="w-full rounded-md border border-slate-300 p-2" placeholder="Qué se hizo, qué se recibió, con quién se validó…" />
+          </label>
+          <button onClick={guardarComentario} disabled={!comentario.trim()} className="boton-sec rounded-md px-3 py-1.5 text-xs ring-1 ring-slate-300 disabled:opacity-50">Guardar comentario</button>
+          <div className="flex flex-wrap gap-2 border-t border-slate-100 pt-2">
             {r.estado !== 'aprobado' && <button onClick={aprobar} className="boton-accion rounded-md px-3 py-1.5 text-xs font-medium">Aprobar requisito</button>}
             <select onChange={ev => ev.target.value && cambiarEstado(ev.target.value)} defaultValue="" className="rounded-md border border-slate-300 px-2 py-1 text-xs" aria-label="Cambiar estado">
               <option value="">Cambiar estado…</option>
@@ -172,7 +188,7 @@ function Requisito({ r, alCambiar, quienes }) {
             </select>
           </div>
           <label className="block text-xs">
-            <span className="mb-1 block text-slate-600">Pegue el texto del documento para la revisión automática (domicilio, antigua Agencia, solo pesos):</span>
+            <span className="mb-1 block text-slate-600">Solo para revisión automática: pegue aquí el TEXTO de un documento (domicilio, antigua Agencia, solo pesos). Esto no se guarda como comentario.</span>
             <textarea value={texto} onChange={ev => setTexto(ev.target.value)} rows={3} className="w-full rounded-md border border-slate-300 p-2" />
           </label>
           <button onClick={revisar} disabled={!texto} className="boton-sec rounded-md px-3 py-1.5 text-xs ring-1 ring-slate-300 disabled:opacity-50">Correr revisión</button>

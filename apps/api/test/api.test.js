@@ -240,3 +240,14 @@ test('archivar en lugar de borrar', async () => {
   assert.ok(sigue.archivado_en, 'el mensaje sigue en la base, solo archivado');
   assert.equal((await app.inject({ method: 'DELETE', url: `/api/mensajes/${m.id}`, headers: h })).statusCode, 404);
 });
+
+test('comentario del consultor: se agrega a la nota con nombre y fecha, sin borrar lo anterior', async () => {
+  const h = await entrar('mayela@capturar-correo.invalid', 'clave-segura-123');
+  const { rows: [r] } = await base.superPool.query(
+    `SELECT id, nota FROM expediente_requisitos WHERE expediente_id = $1 AND nombre = 'Póliza de Responsabilidad Civil'`, [IDS.expKeri]);
+  const res = await app.inject({ method: 'POST', url: `/api/requisitos/${r.id}/comentario`, headers: h, payload: { texto: 'Berkley corrigió domicilio y giro; endoso validado.' } });
+  assert.equal(res.statusCode, 200, res.body);
+  const nota = res.json().nota;
+  assert.ok(nota.startsWith(r.nota), 'lo anterior se conserva');
+  assert.match(nota, /Berkley corrigió domicilio y giro; endoso validado\. \(Mayela Romero Pérez, /);
+});
